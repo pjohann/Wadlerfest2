@@ -1,0 +1,1635 @@
+\documentclass{article}[12 pt]
+
+\usepackage{stmaryrd}
+\usepackage{geometry}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{pxfonts}
+\usepackage{todonotes}
+
+\newcommand{\pattynote}[1]{\todo[inline, color=green!40]{#1}}
+
+\newcommand{\fold}[1]{\llparenthesis #1 \rrparenthesis}
+\newcommand{\eqAnnotation}[1]{\hspace{2cm}\left\{\textrm{#1}\right\}}
+\newcommand{\mbind}{\mathrel{>\kern-0.45em>\kern-0.45em=}}
+\newcommand{\kw}[1]{\mathbf{#1}}
+
+\newtheorem{thm}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+\newtheorem{remark}{Remark}
+
+\newtheoremstyle{problemstyle}
+  {\topsep}  % space above
+  {\topsep}  % space below
+  {\normalfont}% name of font to use in the body of the theorem
+  {0em}% measure of space to indent
+  {\bfseries}% name of head font
+  {.}% punctuation between head and body
+  {5pt plus 1pt minus 1pt}% space after theorem head; " " = normal interword space
+  {}% Manually specify head
+\theoremstyle{problemstyle}
+\newtheorem{problem}{Problem}
+
+\title{Higher-order Polymorphic Testing}
+\author{Robert Atkey and Patricia Johann}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+ABSTRACT GOES HERE
+\end{abstract}
+
+\section{Notes from conversation with Bob 8/26}
+
+Positioning: Combines Theorems for Free with Monads, appropriate for
+Wadlerfest.
+
+Consider programs parametric in the monad (extends BJC) by quantifying
+over type operators. 
+
+Overall approach: Adapt BJC to functor categories, and consider type
+constructors as fixed points of higher-order functors.
+
+We can think of the monad operators as constructors of a data type
+(e.g., the monadPlus operators (++) and [] are constructors for binary
+trees). We can think of (higher-order) constraints as refining the
+resulting data types to give monads (e.g., imposing the associativity
+constraint on binary trees gives lists).
+
+It is hard to see how to generate test monads, but we can at least use
+(higher-order) constraints to give a specification that all test monads must
+satisfy. For example, we can justify the use of List as the test monad
+for msum by showing that it satisfies the monadPlus constraints. 
+
+So, by tidying up BJC, we can say what the user has to prove in order
+to know that their test is sound. In the example above, if the user
+chose binary trees as their test monad, then the free structure on
+these constructors --- i.e., the monad of binary trees --- would be a
+monad supporting operations of the required types, but those
+operations would fail to satisfy the monadPlus constraints. This would
+show that binary trees give traces for operations that can be applied,
+but cannot be taken as the test monad for the higher-order property
+under consideration.
+
+Of course, the user need not choose the ``least'' structure satisfying
+the constraints as their test structure. They can choose any structure
+satisfying those constraints because, even if the structure they
+choose satisfies other constraints as well, the structure will
+definitely satisfy the required constraints, and those other
+constraints will not have been amongst the required constraints.
+
+Some examples we might investigate are:
+\begin{itemize}
+\item lambda terms [no constraints]
+\item ptrees [no constraints]
+\item monads (study these as a special case --- note that these do not
+  take full advantage of the higher-order functionality because
+  information at the data level never changes) [monadPlus constraints]
+\item imperative queues [no constraints]
+\item other structures as in Peter et al.'s polymorphic testing paper [??]
+\end{itemize}
+There may also be examples for which the least monad satisfying the
+constraints is not expressible in Haskell. Such a situation may arise
+when this monad arises by, e.g, quotienting, because Haskell cannot
+express this.
+
+With regard to the special case of monadic constraints, there are two
+approaches. One approach is to specialize the above general techniques
+to monads, as described above. Another approach is to generate the free
+monads, rather than fixed points of higher-order functors, as in the
+first approach. But are these not actually the same thing?
+
+\section{First-order Polymorphic Testing}
+
+The \pattynote{first-order} {\em polymorphic testing problem} can be
+formally stated as follows:
+
+\begin{verse}\label{problem:poly-testing}
+  \hspace*{0.2in}Let $\sigma[\alpha]$ be a type expression with a free
+  type variable $\alpha$, and let $H$ be a definable functor. Given a
+  pair of functions $h_1$, $h_2$ of type $\forall \alpha :
+  *.~\sigma[\alpha] \to H\alpha$, find a \emph{monomorphic} sufficient
+  condition that implies the following property:
+  \begin{equation}
+    \label{eq:problem}
+    \forall \alpha : *. \forall x : \sigma[\alpha].~h_1~\alpha~x = h_2~\alpha~x
+  \end{equation}
+\end{verse}
+
+\noindent
+The idea here is that $h_1$, say, is a polymorphic function to be
+tested against a reference implementation $h_2$ that serves as a
+specification of the computational behavior $h_1$ should have.  This
+problem has been considered by Bernardy, Jansson, and
+Claessen~\cite{bjc10}, whose main result is:
+
+\begin{thm}\label{thm:poly-testing}
+Let $\sigma[\alpha]$, $H$, $h_1$ and $h_2$ be as in the description of
+the polymorphic testing problem. If there exist functors $\{G_i\}_{i
+  \in I}$ and $F$, and types $\{O_i\}_{i \in I}$ such that
+\begin{displaymath}
+  \sigma[\alpha] = \left( \Pi_{i \in I} (G_i \alpha \to O_i)\right) 
+  \times  (F \alpha \to \alpha)
+\end{displaymath}
+and if there exists an initial $F$-algebra $(\mu F, \mathrm{in} : F(\mu
+F) \to \mu F)$, then the following condition is a solution for this
+instance of the polymorphic testing problem:
+\begin{equation}
+  \label{eq:solution-pt}
+  \forall p : \Pi_{i \in I}(G_i(\mu F) \to O_i).~h_1~(\mu F)~(p,
+  \mathrm{in}) = h_2~(\mu F)~(p, \mathrm{in})
+\end{equation}
+\end{thm}
+
+We will say that a type of the form of $\sigma$ is in {\em BJC
+  canonical form}.  The proof that (\ref{eq:solution-pt}) is a
+solution to the polymorphic testing problem relies on the following
+lemma. It is a consequence of the parametricity property for
+polymorphic functions whose domains are in BJC canonical form.
+\begin{lemma}\label{lem:initial-algebra-ok}
+  Let $h : \forall \alpha : *. \left(\Pi_{i \in I} (G_i \alpha \to
+  O_i)\right) \times (F \alpha \to \alpha) \to H\alpha$. Assume that
+  there is an initial $F$-algebra $(\mu F, \mathrm{in} : F(\mu F) \to
+  \mu F)$. If $\fold{f}$ is the unique $F$-algebra homomorphism from
+  $(\mu F, \mathrm{in})$ to $(\alpha, f)$, then
+  \begin{displaymath}
+    \begin{array}{l}
+      \forall \alpha : *. \forall p : \Pi_{i \in I} (G_i \alpha \to
+      O_i). \forall f : F\alpha \to \alpha.\\ \quad\quad\quad
+      h~\alpha~(p, f) = H~\fold{f}~(h~\mu F~(\langle p_i \circ
+      G_i\fold{f} \rangle_{i \in I}, \mathrm{in}))
+    \end{array}
+  \end{displaymath}
+\end{lemma}
+
+\begin{proof}
+  We invoke the parametricity property for $h$ (specialised to the case
+  of functional relations):
+  \begin{equation}
+    \label{eq:h-parametricity-prop}
+    \begin{array}{l}
+      \forall \alpha_1, \alpha_2 : *.~\forall r : \alpha_1 \to \alpha_2. \\
+      \quad \forall p' : \Pi_{i \in I}(G_i\alpha_1 \to O_i), p :
+      \Pi_{i \in I}(G_i\alpha_2 \to O_i). \\ 
+      \quad\quad (\forall i \in I.~p'_i = p_i \circ G_i r) \Rightarrow \\
+      \quad\quad\quad \forall f_1 : F\alpha_1 \to \alpha_1, f_2 :
+      F\alpha_2 \to \alpha_2. \\ 
+      \quad\quad\quad\quad r \circ f_1 = f_2 \circ F r \Rightarrow \\
+      \quad\quad\quad\quad\quad H~r~(h~\alpha_1~(p',f_1)) =
+      h~\alpha_2~(p,f_2) 
+    \end{array}
+  \end{equation}
+  Given $\alpha : *$, $p : \Pi_{i \in I} (G_i\alpha \to O_i)$ and $f :
+  F\alpha \to \alpha$, we instantiate (\ref{eq:h-parametricity-prop})
+  with $\alpha_1 = \mu F$, $\alpha_2 = \alpha$, $r = \fold{f}$, $p' =
+  \langle p_i \circ G_i \fold{f} \rangle_{i \in I}$, $p = p$, $f_1 =
+  \mathrm{in}$ and $f_2 = f$. The condition on $p'$ and $p$ in the
+  third line holds by definition, and the condition on $f_1$ and $f_2$
+  in the fourth and fifth lines holds by the fact that $\fold{f}$ is
+  an $F$-algebra homomorphism.
+\end{proof}
+
+We can use Lemma~\ref{lem:initial-algebra-ok} to prove that
+(\ref{eq:solution-pt}) is a solution to the polymorphic testing
+problem.
+
+\begin{proof}
+(Theorem~\ref{thm:poly-testing}) We want to prove that
+  (\ref{eq:solution-pt}) implies the following specialization of
+  (\ref{eq:problem}) to the current situation: 
+  \begin{displaymath}
+    \forall \alpha : *. \forall p : \Pi_{i \in I}(G_i\alpha \to
+    O_i). \forall f : F\alpha \to \alpha.~h_1~\alpha~(p,f) =
+    h_2~\alpha~(p,f)
+  \end{displaymath}
+  Given $\alpha : *$, $p : \Pi_{i \in I}(G_i\alpha \to O_i)$ and $f :
+  F\alpha \to \alpha$, we reason as follows:
+  \begin{displaymath}
+    \begin{array}{cl}
+       & h_1~\alpha~(p,f) \\
+       =&\eqAnnotation{Lemma \ref{lem:initial-algebra-ok} applied to $h_1$} \\
+       &H~\fold{f}~(h_1~\mu F~(\langle p_i \circ G_i\fold{f}
+       \rangle_{i \in I}, \mathrm{in})) \\ 
+       =&\eqAnnotation{Application of (\ref{eq:solution-pt})} \\
+       &H~\fold{f}~(h_2~\mu F~(\langle p_i \circ G_i\fold{f}
+       \rangle_{i \in I}, \mathrm{in})) \\ 
+       =&\eqAnnotation{Lemma \ref{lem:initial-algebra-ok} applied to
+         $h_2$} \\ 
+       &h_2~\alpha~(p,f)
+    \end{array}
+  \end{displaymath}
+\end{proof}
+
+\subsection{Solution Reduction via Embedding-Projection Pairs}
+
+In fact, Bernardy, Jansson, and Claessen do not require that the type
+of $h_1$ and $h_2$ is actually {\em of} BJC canonical form as stated
+in Theorem~\ref{thm:poly-testing}, but rather that the type of $h_1$
+and $h_2$ be {\em embeddable} into a type of BJC canonical
+form. Indeed, they prove the generalization in
+Theorem~\ref{thm:e-p-reduction} below, which reduces solutions to the
+polymorphic testing problem for functions of types embeddable into
+types of BJC canonical form to solutions to the polymorphic testing
+problem for functions {\em actually} of such types. We require the
+following definition in order to state the generalization precisely:
+
+\begin{definition}
+  Let $\sigma[\alpha]$ and $\tau[\alpha]$ be type expressions with a
+  single free type variable. An \emph{embedding-projection pair}
+  $(e,p) : \sigma[\alpha] \hookrightarrow \tau[\alpha]$ consists of a
+  pair of functions $e : \forall \alpha.~\sigma[\alpha] \to
+  \tau[\alpha]$ and $p : \forall \alpha.~\tau[\alpha] \to
+  \sigma[\alpha]$ such that $\forall \alpha : *. \; (p~\alpha) \circ
+  (e~\alpha) = \mathrm{id}_{\sigma[\alpha]}$.
+\end{definition}
+
+\noindent
+We then have:
+
+\begin{thm}\label{thm:e-p-reduction}
+  If $\tau[\alpha] = (\Pi_{i \in I} (G_i \alpha \to O_i)) \times (F
+  \alpha \to \alpha)$ is a type with a free type variable $\alpha$, if
+  there exists an initial $F$-algebra $(\mu F, \mathrm{in} : F(\mu F)
+  \to \mu F)$, if $(e,p) : \sigma[\alpha] \hookrightarrow
+  \tau[\alpha]$ is an embedding-projection pair, if $H$ is a definable
+  functor, and if $h_1$ and $h_2$ are functions of type $\forall
+  \alpha : *.~\sigma[\alpha] \to H \alpha$, then 
+  \begin{displaymath}
+    \begin{array}{cl}
+      &  \forall s : \Pi_{i \in I}(G_i(\mu F) \to O_i).~h_1~\mu F~(s,
+          \mathrm{in}) = h_2~\mu F~(s, \mathrm{in})
+      \\
+      \Rightarrow& \\
+      & \forall \alpha : *. \forall x : \sigma[\alpha].~h_1~\alpha~x =
+      h_2~\alpha~x 
+    \end{array}
+  \end{displaymath}
+\end{thm}
+
+\begin{proof}
+  Given $\alpha : *$ and $x : \sigma[\alpha]$, we can apply
+  Theorem~\ref{thm:poly-testing} to $h_1\circ p$ and $h_2 \circ p$,
+  which both have type $\forall \alpha. \,\tau[\alpha] 
+  \rightarrow H\alpha$ to get that
+  \begin{displaymath}
+    \begin{array}{cl}
+      & \forall s : \Pi_{i \in I}(G_i(\mu F) \to O_i).~(h_1 \circ
+      p)~\mu F~(s, \mathrm{in}) = (h_2 \circ p)~\mu F~(s,
+      \mathrm{in})\\ 
+      \Rightarrow&\eqAnnotation{by Theorem~\ref{thm:poly-testing}}\\
+      & \forall \alpha : *.\, \forall y : \tau[\alpha] .\, (h_1 \circ
+      p)~\alpha~y = (h_2 \circ p)~\alpha~y\\
+      \Rightarrow&\eqAnnotation{take $q = e \,\alpha \,x$}\\
+      & \forall \alpha : *. \,\forall x : \sigma[\alpha].\, (h_1 \circ
+      p)~\alpha~(e \, \alpha\, x) = (h_2 \circ p)~\alpha~(e \,
+      \alpha\, x)\\ 
+      \Leftrightarrow&\eqAnnotation{$(e,p)$ is an embedding-projection
+        pair}\\ 
+      & \forall \alpha : *.\, \forall x : \sigma[\alpha].\, h_1~\alpha~x =
+      h_2~\alpha~x 
+    \end{array}
+  \end{displaymath}
+\end{proof}
+
+\begin{example}\label{ex:filter}
+Suppose we want to compare two functions --- suggestively named
+$\mathit{filter}_1$ and $\mathit{filter_2}$ --- of type
+\begin{equation}
+    \label{eq:example-problem-1}
+    \forall \alpha : *.~(\alpha \to \mathrm{Bool}) \to
+            [\alpha] \to [\alpha]
+  \end{equation}
+In this instance of the polymorphic testing problem, we have (up to
+currying) $\sigma[\alpha] = (\alpha \to \mathrm{Bool}) \times
+[\alpha]$ and $H \alpha = [\alpha]$. In this case, $[sigma[\alpha]$ is
+  not actually {\em of} BJC canonical form, but it does {\em embed}
+  in the BJC canonical form type
+  \begin{displaymath}
+    \forall \alpha : *.~(\alpha \to \mathrm{Bool}) \times \mathbb{N}
+    \times (\mathbb{N} \to \alpha) \to [\alpha]
+  \end{displaymath}
+\noindent
+This type is the instance of the type schema from
+Theorem~\ref{thm:poly-testing} for $G_1\alpha = \alpha$, $O_1 =
+\mathrm{Bool}$, $G_2\alpha = 1$, $O_2 = \mathbb{N}$, and $F\alpha =
+\mathbb{N}$, so $(\mu F, \mathrm{in}) = (\mathbb{N}, \mathit{id})$,
+and, by Theorem~\ref{thm:e-p-reduction}, the corresponding monomorphic
+instance
+  \begin{displaymath}
+ \forall n : \mathbb{N}.\, \forall p : \mathbb{N} \to
+ \mathrm{Bool}.~\mathit{filter}_1~\mathbb{N}~(p, n, \mathit{id}) =
+ \mathit{filter}_2~\mathbb{N}~(p, n, \mathit{id})
+  \end{displaymath}
+\noindent
+of (\ref{eq:solution-pt}) is a solution to the polymorphic testing
+problem for the type in~(\ref{eq:example-problem-1}).  More concretely, this
+instance is
+  \begin{equation}\label{eq:filter-suff}
+  \forall n : \mathbb{N}. \forall p : \mathbb{N}\to
+  \mathrm{Bool}.~\mathit{filter}_1~\mathbb{N}~p~[1..n] =
+  \mathit{filter}_2~\mathbb{N}~p~[1..n]
+  \end{equation}
+\noindent 
+\end{example}
+
+\vspace*{0.2in}
+
+\pattynote{Is $p$ actually quantified over, or arbitrary-but-fixed?
+  Same question throughout. Compare with BJC.}
+
+In Example 1 of~\cite{bjc10}, Bernardy, Jansson, and Claessen derive
+the sufficient monomorphic test property
+\[ \forall n : \mathbb{N}. \forall p : \alpha \to
+\mathrm{Bool}.~\mathit{filter}_1~\mathbb{N}~p~[X_1..X_n] =
+\mathit{filter}_2~\mathbb{N}~p~[X_1..X_n]\] for the type in
+Equation~\ref{eq:example-problem-1}.  Interestingly, this property
+still requires a fixed function $X$ that maps from all of $\mathbb{N}$
+into $\alpha$ to construct its test list, as well as a predicate of
+type $\alpha \to \mathrm{Bool}$. By contrast, the sufficient
+monomorphic condition derived by applying Theorem~5 in~\cite{bjc10}
+(i.e., Theorem~\ref{thm:e-p-reduction} above) actually justifies
+requiring only testing for the identity function on $\mu F$ (i.e.,
+$\mathbb{N}$ here) and predicates of type $\mathbb{N} \to
+\mathrm{Bool}$. This is reflected in Equation~\ref{eq:filter-suff}
+above. The weaker result (i.e., the more complex test property)
+derived in~\cite{bjc10} appears to be a consequence of the informal,
+intuitive approach Bernardy, Jansson, and Claessen take to applying
+their theorem in practice. Our more formal application of the theorem
+here allows us to derive additional prunings of the test space. A
+similar comment applies to all of the examples in~\cite{bjc10}.
+
+Note that although $p$ will be applied only to the list $[1..n]$, it
+must still be defined for all natural numbers. This means that many
+more maps $p$ will be generated for testing than are either used or
+necessary. We will revisit this example in the next subsection, where
+we formally prove that the domain of $p$ can be restricted to avoid
+this overgeneration of test data.
+
+\subsection{Polymorphic Testing for Containers: Eliminating the Need
+  for e-p Pairs}\label{sec:dep-conts} 
+
+Since Bernardy, Jansson, and Claessen prove their results only for
+types that embed in types of BJC canonical form, they must embed any
+type of any property of interest into such a type before solving the
+polymorphic testing problem for its type. In particular, if a property
+involves a container~\cite{aag03} (i.e., a dependent pair), then they
+must embed that container into a non-dependent pair before proceeding
+as in~\cite{bjc10}. (See Appendix B of~\cite{bjc10}.) When the
+embedding is not an isomorphism, this has the effect of enlarging the
+position type for the container by erasing the type index, which in
+turn causes the overabundance of testing observed at the end of the
+last section to be performed. In this section, we show how working
+directly with containers prevents this, and supports even more pruning
+of the testing search space. In effect, we show that position types
+need never be taken to be ``too big'' simply to make embedding and
+projection possible, and thus ensure that no more testing is done for
+properties involving containers than is absolutely necessary. The
+upshot is that while embedding-projection pairs do prune the testing
+search space considerably, we can derive even greater pruning by
+containerizing the domain types of polymorphic functions to be tested
+instead.
+
+Our main theorem for containers is:
+
+\begin{thm}\label{thm:dep-containers}
+Let $\sigma[\alpha]$, $H$, $h_1$ and $h_2$ be as in the description of
+the polymorphic testing problem. If there exist
+functors $\{G_i\}_{i \in I}$, a type $S$, functors $F_s$ for all $s :
+S$, and types $\{O_i\}_{i \in I}$ such that
+\begin{equation}
+  \label{eq:solution-2-type}
+  \sigma[\alpha] = \left(\Pi_{i \in I} (G_i \alpha \to O_i)\right)
+  \times \Sigma s : S.~(F_s \alpha \to \alpha)
+\end{equation}
+and for all $s : S$ there exists an initial $F_s$-algebra $(\mu F_s,
+\mathrm{in}_s : F_s(\mu F_s) \to \mu F_s)$, then the following
+condition is a solution for this instance of the polymorphic testing
+problem:
+\begin{equation}
+  \label{eq:solution-2}
+  \forall s : S. \forall p : \Pi_{i \in I}(G_i(\mu F_s) \to
+  O_i).~h_1~\mu F_s~(p, s, \mathrm{in}_s) = h_2~\mu F_s~(p, s,
+  \mathrm{in}_s)
+\end{equation}
+\end{thm}
+\noindent
+The proof that (\ref{eq:solution-2}) is a solution to the polymorphic
+testing problem is almost identical to the proof of
+Theorem~\ref{thm:poly-testing} above.
+
+\begin{example} 
+Suppose again that we want to compare two functions
+$\mathit{filter}_1$ and $\mathit{filter_2}$ of type
+  \begin{equation} 
+   \label{eq:example-problem-1-again}
+    \forall \alpha : *.~(\alpha \to \mathrm{Bool}) \to
+            [\alpha] \to [\alpha]
+  \end{equation}
+It is not difficult to see that $\sigma[\alpha]$ is {\em isomorphic}
+to the container type
+  \begin{displaymath}
+    \forall \alpha : *~(\alpha \to \mathrm{Bool}) \times \Sigma n :
+    \mathbb{N}.~(\mathrm{Fin}~n \to \alpha)
+  \end{displaymath}
+  where $\mathrm{Fin}~n$ is the type of natural numbers less than $n$.
+  This type is the instance of the type schema
+  (\ref{eq:solution-2-type}) for $G\alpha = \alpha$, $S = \mathbb{N}$
+  and $Fn\alpha = \mathrm{Fin}~n$, so Theorem~\ref{thm:dep-containers}
+  ensures that the corresponding monomorphic instance
+  \begin{displaymath}
+  \forall n : \mathbb{N}. \forall p : \mathrm{Fin}~n \to
+  \mathrm{Bool}.~\mathit{filter}_1~(\mathrm{Fin}~n)~(p, n,
+  \mathit{id}) = \mathit{filter}_2~(\mathrm{Fin}~n)~(p, n,
+  \mathit{id})
+  \end{displaymath}
+  of (\ref{eq:solution-2}) is a solution to the polymorphic testing
+  problem for the type (\ref{eq:example-problem-1}). More concretely,
+  this instance is
+  \begin{equation}\label{eq:filter-final}
+  \forall n : \mathbb{N}. \forall p : \mathrm{Fin}~n \to
+  \mathrm{Bool}.~\mathit{filter}_1~(\mathrm{Fin}~n)~p~[1..n] =
+  \mathit{filter}_2~(\mathrm{Fin}~n)~p~[1..n]
+  \end{equation}
+\end{example}
+
+Note that the condition in Equation~\ref{eq:filter-final} is much
+easier to test than the corresponding one given in Example~1
+of~\cite{bjc10}. Because the domain of $p$ is restricted from
+$\mathbb{N}$ to $\mathrm{Fin}~n$, only finitely many maps $p$ need to
+be considered here, rather than the infinitely many requiring testing
+by~\cite{bjc10}. Moreover, each such map is itself finite, and is thus
+simpler to represent, generate, and work with than its
+``corresponding'' infinite domain maps. Finally, Bernardy, Jansson,
+and Claessen discuss after Theorem 6 in~\cite{bjc10} how to most
+efficiently generate test values for sufficient monomorphic properties
+for noncontainerized types --- by generating results of applying
+projections to observations directly, rather than first generating
+observations and the calculating their projections. But since
+embeddings and projections are both identity functions when types are
+containerized, and since a type that can be embedded in a container
+type must itself be representable as a container type~\cite{aag03},
+this issue simply disappears with containerization.
+
+We say that a type as in Theorem~\ref{thm:dep-containers} whose domain
+type $\sigma[\alpha]$ is of the containerized form in
+Equation~\ref{eq:solution-2-type} is in {\em container canonical form}
+(CCF). 
+
+\subsection{Polymorphic Testing with Multiple Type Variables}
+
+All of the results appearing in this section so far generalize to
+properties whose types are parameterized over multiple type
+variables. When there is no dependency between the type variables in
+the type of a property to test, then those variables can, in effect,
+be monomorphized in parallel. This makes sense intuitively, and is
+precisely the approach taken in Example~7 of~\cite{bjc10}. We now show
+how Theorem~\ref{thm:dep-containers} justifies this formally for a
+containerized version of that example.
+
+\begin{example}\label{ex:isprefixof}
+Suppose we want to test two implementations $\mathit{isPrefixOf}_1$
+and $\mathit{isPrefixOf}_2$ of
+\begin{displaymath}
+\mathit{isPrefixOf} : \forall \alpha \, \beta : *.~(\alpha \to \beta
+\to \mathrm{Bool}) \to [\alpha] \to [\beta] \to \mathrm{Bool}
+\end{displaymath}
+\noindent 
+This type is isomorphic to the container type
+\begin{displaymath}
+\forall \alpha \, \beta : *.~(\alpha \to \beta \to \mathrm{Bool}) \to
+\Sigma n : \mathbb{N}.~(\mathrm{Fin}~n \rightarrow \alpha) \to
+\Sigma m : \mathbb{N}.~(\mathrm{Fin}~m \rightarrow \beta) 
+\to \mathrm{Bool}
+\end{displaymath}
+\noindent
+Because --- and only because --- the type arguments $\alpha$ and
+$\beta$ are completely independent of one another, this type can in
+turn be embedded into the type
+\begin{displaymath}
+\forall (\alpha, \beta) : *.~((\alpha, \beta) \to \mathrm{Bool}) \;
+\times \; \Sigma (n,m) : (\mathbb{N}, \mathbb{N)}.~((\mathrm{Fin}~n,
+\mathrm{Fin}~m) \rightarrow (\alpha, \beta)) \to \mathrm{Bool}
+\end{displaymath}
+\noindent
+The technique of Theorem~\ref{thm:dep-containers}
+can be applied to get that the following monomorphic instance
+of~(\ref{eq:solution-2}) is a solution to the polymorphic testing
+problem for the type of $\mathit{isPrefixOf}$:
+\[\begin{array}{l}
+\forall n : \mathbb{N}.\, \forall m:\mathbb{N}.\, \forall p :
+(\mathrm{Fin}~n, \mathrm{Fin}~m) \to
+\mathrm{Bool}.\\ ~~~~~~~~~\mathit{isPrefixOf}_1~(\mathrm{Fin}~n,
+\mathrm{Fin}~m)~(p, n,m,\mathit{id}) =
+\mathit{isPrefixOf}_2~(\mathrm{Fin}~n,\mathrm{Fin}~m)~(p,
+n,m,\mathit{id})
+\end{array}\]
+\noindent
+This instance can be rewritten as
+\[\begin{array}{l}
+\forall n : \mathbb{N}.\, \forall m:\mathbb{N}.\, \forall p :
+\mathrm{Fin}~n \rightarrow \mathrm{Fin}~m \to
+\mathrm{Bool}.\\ ~~~~~~~~~\mathit{isPrefixOf}_1~(\mathrm{Fin}~n)~(\mathrm{Fin}~m)~p~[1..n]~[1..m]
+=
+\mathit{isPrefixOf}_2~(\mathrm{Fin}~n)~(\mathrm{Fin}~m)~p~[1..n]~[1..m]
+\end{array}\]
+\noindent
+As above, this condition is an improvement on that given in Example~7
+of~\cite{bjc10} because we need only test on finite lists of natural
+numbers, rather than lists over $\alpha$ and $\beta$. That is, there
+is no quantification over functions $X$ and $Y$ that map into $\alpha$
+and $\beta$, respectively, because attention can be restricted to the
+concrete lists $[1..n]$ and $[1..m]$. In addition, only test maps $p$
+of type $\mathrm{Fin}~n \rightarrow \mathrm{Fin}~m \to \mathrm{Bool}$,
+rather than $\alpha \to \beta \to \mathrm{Bool}$, need to be
+considered.
+\end{example}
+
+Theorem~\ref{thm:dep-containers} can also be used to solve polymorphic
+testing problems when there is only a linear dependency among the type
+variables in the a canonical test type, i.e., provided the type is of
+the form $\forall \alpha_1 ... \,\alpha_n.~\tau$, where
+$\alpha_1,...,\alpha_n$ is an ordering of the variables over which the
+type $\sigma[\alpha] \rightarrow H \alpha$ is parameterized, and this
+ordering is such that $\alpha_1$ is independent of all other type
+variables and, for all $i > 1$, $\alpha_i$ depends only on
+$\alpha_1,...,\alpha_{i-1}$. In this case,
+Theorem~\ref{thm:dep-containers} can be applied serially to
+monomorphize the type arguments one at a time, starting with
+$\alpha_1$. This is (the containerized version of) the approach taken
+on an intuitive basis in, for instance, Example~6 of~\cite{bjc10}. We
+now show how this is justified by Theorems~\ref{thm:poly-testing}
+and~\ref{thm:dep-containers}.
+
+\begin{example}\label{ex:map}
+The type arguments to the function
+\begin{displaymath}
+\mathit{map} : \forall \alpha \, \beta : *.~(\alpha \to \beta) \to
+       [\alpha] \to [\beta]
+\end{displaymath}
+\noindent
+are not independent of one another because $\beta$ depends on $\alpha$
+in the type of $\mathit{map}$'s first term argument, so we cannot
+monomorphize in parallel. But this dependency is linear, because
+$\alpha$ is independent of all other type variables and $\beta$
+depends only on $\alpha$, so we can monomorphize serially. Treating
+$\beta$ as a constant, we therefore first construct the following
+isomorphic type for $\mathit{map}$:
+\begin{displaymath}
+\forall \alpha \,\beta : *.~(\alpha \to \beta) \to \Sigma n:
+\mathbb{N}.\, (\mathrm{Fin}~n \to \alpha) \to [\beta]
+\end{displaymath}
+\noindent
+Then we apply Theorem~\ref{thm:dep-containers} to get the instance
+\begin{displaymath}
+\forall \beta : *. \, \forall n: \mathbb{N}. \, \forall p :
+\mathrm{Fin}~n \to
+\beta.~\mathit{map}_1~(\mathrm{Fin}~n)~(p,\mathit{id}) =
+\mathit{map}_2~(\mathrm{Fin}~n)~(p,\mathit{id})
+\end{displaymath}
+of (\ref{eq:solution-2}), i.e., 
+\begin{displaymath}
+\forall \beta : *. \, \forall n: \mathbb{N}. \, \forall p :
+\mathrm{Fin}~n \to
+\beta.~\mathit{map}_1~(\mathrm{Fin}~n)~p~[1..n] =
+\mathit{map}_2~(\mathrm{Fin}~n)~p~[1..n]
+\end{displaymath}
+\noindent
+to be tested, in which $\alpha$ has been monomorphized. We can now
+apply Theorem~\ref{thm:dep-containers} to this new property to
+monomorphize $\beta$ as well. For every $n \in \mathbb{N}$, the type
+of the functions $\mathit{map}_1~(\mathrm{Fin}~n)~[1..n]$ and
+$\mathit{map}_2~(\mathrm{Fin}~n)~[1..n]$ that we are interested in
+testing is, up to isomorphism,
+\begin{displaymath}
+\forall \beta : *. \forall p : \mathrm{Fin}~n \to \beta.\ [\beta]
+\end{displaymath}
+\noindent
+Theorem~\ref{thm:poly-testing} thus gives the derived monomorphic
+instance
+\begin{displaymath}
+\forall n, m : \mathbb{N}. \forall p : \mathrm{Fin}~n \rightarrow
+\mathrm{Fin}~m .\
+\mathit{map}_1~(\mathrm{Fin}~n)~(\mathrm{Fin}~m)~p~[1..n]~[1..m] =
+\mathit{map}_2~(\mathrm{Fin}~n)~(\mathrm{Fin}~m)~p~[1..n]~[1..m]
+\end{displaymath}
+of (\ref{eq:solution-pt}) to be tested. This is an improvement over
+the test condition
+\[ \forall \alpha \, \beta :
+*. \, \forall n : \mathbb{N}. \, \forall f : \alpha \rightarrow
+\beta. \, \forall X : \mathbb{N} \rightarrow
+\alpha.~\mathit{map}_1~\alpha~\beta~f~[X_1...X_n] =
+\mathit{map}_2~\alpha~\beta~f~[X_1...X_n]\] from Example~6
+of~\cite{bjc10}. Indeed, it shows that it not only suffices to test
+for lists of various lengths, as noted in~\cite{bjc10}, but that it
+also suffices to test for finite lists of natural numbers and the
+specific fixed function that is the identity on all singletons.
+\end{example}
+
+In general, however, the type variables in a canonical form type are
+mutually dependent. This gives rise to a variant of the polymorphic
+testing problem that subsumes both the type independence exhibited in
+Example~\ref{ex:isprefixof} and the linear dependency exhibited in
+Example~\ref{ex:map} above. This variant can be formalized as:
+
+\begin{verse}
+\hspace*{0.2in}Let $\sigma[\alpha_1,\dots,\alpha_n]$ be a type
+expression with free type variables $\alpha_1,\dots,\alpha_n$, and let
+$H$ be a definable functor with $n$ arguments. Given a pair of
+functions $h_1$, $h_2$ of type $\forall \alpha_1 : *, \dots, \alpha_n
+: *.~\sigma[\alpha_1,...,\alpha_n] \to H\alpha_1\dots\alpha_n$, find a
+\emph{monomorphic} sufficient condition that implies the following
+property:
+  \begin{equation}
+    \label{eq:problem-constraints}    
+  \forall \alpha_1 : *,\dots,\alpha_n : *. \forall x :
+  \sigma[\alpha_1,\dots,\alpha_n].~h_1~\alpha_1~\dots~\alpha_n~x =
+  h_2~\alpha_1~\dots~\alpha_n~x
+  \end{equation}
+\end{verse}
+\noindent
+Note that the type variables $\alpha_1,...,\alpha_n$ can indeed be
+mutually dependent here. 
+
+The following generalization of Theorem~\ref{thm:poly-testing}
+provides a solution to this variant. We first give an auxiliary
+definition necessary to state our result.
+
+\begin{definition}
+If $F_1,\dots,F_n$ are $n$-ary functors, then an {\em $\langle
+  F_1,\dots,F_n \rangle$-algebra} comprises a carrier $\langle
+\alpha_1,...,\alpha_n \rangle$ and maps $\langle f_1,...,f_n \rangle$
+such that for all $k = 1,...,n$, $f_k : F_k \,\alpha_1...\alpha_n \to
+\alpha_k$. That is, an $\langle F_1,\dots,F_n \rangle$-algebra is
+simultaneously an $F_k$-algebra for each $k = 1,...,n$.  An {\em
+  $\langle F_1,\dots,F_n \rangle$-algebra homomorphism} from $(\langle
+\alpha_1,...,\alpha_n \rangle, \langle f_1,...,f_n \rangle)$ to
+$(\langle \beta_1,...,\beta_n \rangle, \langle g_1,...,g_n \rangle)$
+comprises maps $h_k : \alpha_k \to \beta_k$ such that $g_k \circ F_k
+\langle h_1,...,h_n \rangle = h_k \circ f_k$ for $k = 1,...,n$. An
+$\langle F_1,\dots,F_n \rangle$-algebra is {\em initial} if there is a
+unique $\langle F_1,\dots,F_n \rangle$-algebra homomorphism from it to
+any other $\langle F_1,\dots,F_n \rangle$-algebra, i.e, if it is
+simultaneously an initial $F_k$-algebra for each $k = 1,...,n$.  We
+write $(\mu \langle F_1 \dots F_n \rangle,
+\mathrm{in}_1,...,\mathrm{in}_n)$ for the initial $\langle
+F_1,\dots,F_n \rangle$-algebra.
+\end{definition}
+
+We then have
+
+\begin{thm}\label{thm:general}
+Let $\sigma[\alpha_1,...,\alpha_n]$ be a type with $n$ free type
+variables $\alpha_1,...,\alpha_n$, and let $H$ be a definable $n$-ary
+functor. Given a pair of functions $h_1, h_2 :
+\sigma[\alpha_1,...,\alpha_n] \to H \alpha_1...\alpha_n$. If there
+exist $n$-ary functors $\{G_i\}_{i \in I}$, types $\{O_i\}_{i \in I}$,
+and $n$-ary functors $F_1,\dots,F_n$ such that
+\begin{displaymath}
+  \sigma[\alpha_1,...,\alpha_n] = \left(\Pi_{i \in I} (G_i
+  \alpha_1\dots\alpha_n \to O_i)\right) \times \Pi_{1 \leq k \leq
+    n}(F_k \alpha_1\dots\alpha_n \to \alpha_k) 
+\end{displaymath}
+and there exists an initial $\langle F_1,\dots,F_n \rangle$-algebra
+$(\mu \langle F_1 \dots F_n \rangle, \mathrm{in}_1 \dots,
+\mathrm{in}_n)$, then letting $\mu_k \langle F_1 \dots\, F_n \rangle$
+abbreviate $\pi_k (\mu \langle F_1 \dots\, F_n \rangle)$, the
+following condition is a solution for this instance of the polymorphic
+testing problem with multiple type parameters:
+\begin{equation}
+  \label{eq:solution-1}
+  \begin{array}{l}
+    \forall p : \Pi_{i \in I} \, (G_i\,(\mu_1 \langle F_1 \dots\, F_n
+    \rangle)\, \dots \,(\mu_n \langle F_1 \dots\, F_n \rangle) \to
+    O_i).\\ \quad \quad \quad h_1~(\mu_1 \langle F_1 \dots\, F_n
+    \rangle)\, \dots \,(\mu_n \langle F_1 \dots\, F_n \rangle) ~(p,
+    \mathrm{in}_1, \dots, \mathrm{in}_n)
+    =\\ \quad\quad\quad\quad\quad\quad h_2~ (\mu_1 \langle F_1 \dots\,
+    F_n \rangle)\, \dots \,(\mu_n \langle F_1 \dots\, F_n \rangle)~(p,
+    \mathrm{in}_1, \dots, \mathrm{in}_n)
+\end{array}
+\end{equation}
+\end{thm}
+\noindent
+The proof is similar to the proof of Theorem~\ref{thm:poly-testing}
+above.
+
+\begin{example}\label{ex:map-2}
+The type arguments to the function
+\begin{displaymath}
+\mathit{isListIso} : \forall \alpha \, \beta : *.~(\alpha \to \beta) \to
+(\beta \to \alpha) \to \mathrm{Bool}
+\end{displaymath}
+\noindent
+are mutually dependent. Here, $F_1\,\alpha\,\beta = \beta$ and
+$F_2\,\alpha\,\beta = \alpha$, so since there exists an initial
+$\langle F_1, F_2 \rangle$-algebra $(\mu \langle F_1, F_2 \rangle,
+\langle \mathrm{in}_1, \mathrm{in}_2 \rangle)$, then it suffices to
+test
+\[ \mathit{isListIso}_1~(\mu_1 \langle F_1,F_2
+\rangle)~(\mu_2 \langle F_1,F_2 \rangle)~\mathrm{in}_1~\mathrm{in}_2 =
+\mathit{isListIso}_2~(\mu_1 \langle F_1,F_2 \rangle)~(\mu_2 \langle
+F_1,F_2 \rangle)~\mathrm{in}_1~\mathrm{in}_2\]
+
+\end{example}
+\noindent
+This example cannot be handled by Bernardy, Jansson, and Claessen. It
+is not hard to see that (the containerized version of)
+Theorem~\ref{thm:general} also subsumes, and gives the expected
+results for, canonical types in which the $\alpha_i$ are independent
+of one another (as in Example~\ref{ex:isprefixof}) or are linearly
+dependent (as in Example~\ref{ex:map}).  
+
+\section{The Generalized Polymorphic Testing Problem with
+  Constraints}\label{sec:constraints} 
+
+The function $filter$ places no constraints at all on its
+constructors. Sometimes, however, we want to test polymorphic
+properties whose constructors satisfy the laws of some algebraic
+theory. Bernardy, Jansson, and Claessen consider precisely such
+properties in Section~4.2 of~\cite{bjc10}. For instance, in their
+Example~10 they discuss how to test properties of a sorting network
+generator $\mathit{sort}$ of polymorphic type
+\[ \forall \alpha.~((\alpha, \alpha) \rightarrow (\alpha,
+\alpha)) \rightarrow [\alpha] \rightarrow [\alpha] \]
+\noindent
+This type is similar to the type of $filter$, but instead of taking a
+predicate as its first term argument, $\mathit{sort}$ takes a
+comparison function that itself takes a pair of data elements as input
+and returns the pair consisting of those elements appropriately
+ordered. Note, however, that the type-uniformity entailed by
+parametricity means that a generator of this type cannot determine
+whether or not the comparison function {\em actually} swaps the order
+of its arguments or just promises to.
+
+To test an implementation $\mathit{sort}_1$ against a reference
+implementation $\mathit{sort}_2$, Bernardy, Jansson, and Claessen first
+embed their common type into the following canonical form type:
+\begin{displaymath}
+\forall \alpha.~((\alpha, \alpha) \to \alpha) \to ((\alpha, \alpha)
+\to \alpha) \to \mathbb{N} \to (\mathbb{N} \to \alpha) \to [\alpha]
+\end{displaymath}
+In~\cite{bjc10} the three constructors of this type are called
+$\mathit{Max} : (\alpha, \alpha) \to \alpha$, $\mathit{Min} : (\alpha,
+\alpha) \to \alpha$, and $X : \mathbb{N} \to \alpha$; here,
+$\mathit{Min}~x~y$ represents the minimum of $x$ and $y$ and
+$\mathit{Max}~x~y$ represents their maximum. Bernardy, Jansson, and
+Claessen then argue informally that testing implementations of
+$\mathit{sort}_1$ can be reduced to testing implementations of
+\begin{displaymath}
+\lambda n :
+\mathbb{N}.~\mathit{sort}_1~\,\mathbb{N}~\mathit{Min}~\mathit{Max}~[X1
+  \,.. \,Xn]~=~\mathit{sort}_2~\,\mathbb{N}~\mathit{Min}~\mathit{Max}~[X1
+  \,.. \,Xn] 
+\end{displaymath}
+\noindent
+(But as in the above examples, their Theorem~3 actually justifies
+testing on lists of the form $[1..n]$ rather than $[X1..Xn]$.) And
+using our Theorem~\ref{thm:dep-containers} above we can actually get
+the following more specific sufficient testing property:
+\begin{displaymath}
+\forall n : \mathbb{N}.~\mathit{sort}_1~(\mathrm{Fin}~n)~
+\mathit{Min}~\mathit{Max}~[1..n] =
+\mathit{sort}_2~(\mathrm{Fin}~n)~\mathit{Min}~\mathit{Max}~[1..n]
+\end{displaymath}
+where $\mathit{Min}$ and $\mathit{Max}$ are comparison functions on
+$\mathrm{Fin}~n$ that take as input a pair $(x,y)$ of values in
+$\mathrm{Fin}~n$ as input and return their minimum and maximum,
+respectively. Note that $\mathit{sort}_1$ and $\mathit{sort}_2$ each
+return a list, each of whose elements is a
+$\mathit{Min}$-$\mathit{Max}$ comparison tree describing how to
+compute that element by taking minima and maxima of various elements
+of the input list. However, as observed by Bernardy, Jansson, and
+Claessen, to ensure that those trees actually correspond to a correct
+sorting function, the carrier of the initial algebra must be
+understood as the free distributive lattice generated by the data
+elements $X i$, and $\mathit{Min}$ and $\mathit{Max}$ must be
+understood as meet and join, respectively.  Put differently, the
+initial algebra for each $F \alpha = (\alpha, \alpha) +
+(\alpha,\alpha) + \mathrm{Fin}~n$ must be quotiented by the
+constraints imposed by a free distributive lattice.
+
+This observation makes sense intuitively, but how can we turn the
+intuition that let us solve the polymorphic testing problem for
+implementations of $\mathit{sort}$ into a genuine, jutifiable, general
+technique for handling constraints on the algebra components of
+canonical form types? These are precisely the kinds of constraints we
+need to solve in order to test Dijkstra's algorithm as discussed in
+Section~\ref{sec:motivation}. The next theorem gives a general method
+for solving the polymorphic testing problem in the presence of
+algebraic constraints on the algebra part of a canonical form type of
+a function to be tested. That is, it solves what we dub the {\em
+  polymorphic testing problem with constraints}. This problem can be
+formalized as follows:
+
+\begin{verse}\label{problem:poly-testing}
+  \hspace*{0.2in}Let $\sigma[\alpha]$ be a type expression with a free
+  type variable $\alpha$, and let $H$ be a definable functor. Given a
+  pair of functions $h_1$, $h_2$ of type $\forall \alpha :
+  *.~\sigma[\alpha] \to H\alpha$
+  and a predicate $P[\tau,x]$ on types $\tau$ and values $x :
+  \sigma[\tau]$, the polymorphic testing problem with constraints is
+  to find a \emph{monomorphic} sufficient
+  condition that implies the following property:
+  \begin{equation}
+    \label{eq:problem-constraints}
+    \forall \alpha : *. \forall x : \sigma[\alpha].~P[\alpha,x]
+    \Rightarrow h_1~\alpha~x = h_2~\alpha~x
+  \end{equation}
+\end{verse}
+
+To solve the polymorphic testing problem with constraints, we need two
+auxiliary definitions:
+
+\begin{definition}
+  Let $F$ be a functor and $Q[\tau,f]$ be a predicate on types $\tau$
+  and $F$-algebras $f : F\tau \to \tau$. The \emph{category of
+    $(F,Q)$-algebras} has pairs $(\tau, f : F\tau \to \tau)$ such that
+  $Q[\tau,f]$ as its objects, and normal $F$-algebra homomorphisms as
+  its morphisms.
+\end{definition}
+
+\begin{definition}
+  An \emph{initial $(F,Q)$-algebra} is an initial object in the
+  category of $(F,Q)$-algebras.
+\end{definition}
+\noindent
+Of course for any choice of $F$ and $Q$, an initial $(F,Q)$-algebra
+need not exist, but is unique up to isomorphism when it does. We then
+have
+
+\begin{thm}\label{thm:constraints}
+Let $\sigma[\alpha]$, $P$, $H$, $h_1$, and $h_2$ be as in the
+description of the polymorphic testing problem with constraints. If
+there exist functors $\{G_i\}_{i \in I}$ and $F$, and types
+$\{O_i\}_{i \in I}$ such that
+\begin{equation}
+  \label{eq:constraints-type}
+  \sigma[\alpha] = \left(\Pi_{i \in I} (G_i \alpha \to O_i)\right)
+  \times (F \alpha \to \alpha)
+\end{equation}
+if $P[\tau, (p,f)]$ is equivalent to a predicate $Q[\tau,f]$ on just
+the $F$-algebra component $f$ of $\sigma[\tau]$, and if an initial
+$(F,Q)$-algebra $\mathrm{in} : F(\mu(F,Q)) \to \mu(F,Q)$ exists, then
+the following condition is a solution for this instance of the
+polymorphic testing problem with constraints:
+\begin{equation}
+  \label{eq:solution-constraints-1}
+  \forall p : \Pi_{i \in I}(G_i(\mu (F,Q)) \to O_i).~h_1~(\mu (F,Q))~(p,
+  \mathrm{in}) = h_2~(\mu (F,Q))~(p, \mathrm{in}) 
+\end{equation}
+\end{thm}
+\noindent
+
+The proof that (\ref{eq:solution-constraints-1}) is a solution to the
+polymorphic testing problem with constraints relies on the following
+analogue of Lemma~\ref{lem:initial-algebra-ok}, which also makes use
+of the free theorem for the type of $h_1$ and $h_2$.
+
+\begin{lemma}\label{lem:initial-algebra-with-constraints-ok}
+  Let $h : \forall \alpha : *. \left(\Pi_{i \in I} (G_i \alpha \to
+  O_i)\right) \times (F \alpha \to \alpha) \to H\alpha$. If there
+  exists an initial $(F,Q)$-algebra $(\mu (F,Q), \mathrm{in} : F(\mu
+  (F,Q)) \to \mu (F,Q))$, then
+  \begin{displaymath}
+    \begin{array}{l}
+      \forall \alpha : *. \forall p : \Pi_{i \in I} (G_i \alpha \to
+      O_i). \forall f : F\alpha \to \alpha.\\ \quad\quad Q[\alpha,f]
+      \Rightarrow \\ \quad\quad\quad h~\alpha~(p, f) =
+      H~\fold{f}~(h~(\mu (F,Q))~(\langle p_i \circ G_i\fold{f}
+      \rangle_{i \in I}, \mathrm{in}))
+    \end{array}
+  \end{displaymath}
+where $\fold{f}$ is the unique $(F,Q)$-algebra homomorphism from $(\mu
+(F,Q), \mathrm{in})$ to $(\alpha, f)$.
+\end{lemma}
+
+\begin{proof}
+  The proof is almost identical to the proof of Lemma
+  \ref{lem:initial-algebra-ok}. To construct the $(F,Q)$-algebra
+  homomorphism from $\mu (F,Q)$ to $\alpha$ we need to know that
+  $Q[\alpha,f]$ holds, but this is satisfied by assumption.
+\end{proof}
+
+Once we know $Q[\alpha,f]$ holds, the proof of
+Theorem~\ref{thm:constraints} is virtually identical to the proof of
+Theorem~\ref{thm:poly-testing}, which is its analogue in the absence
+of constraints. However, the proof of Theorem~\ref{thm:constraints}
+uses Lemma~\ref{lem:initial-algebra-with-constraints-ok}, rather than
+Lemma~\ref{lem:initial-algebra-ok}.
+
+The class of predicates on algebras considered in
+Theorem~\ref{thm:constraints} does not include {\em all} of the
+constraints we might like to impose on polymorphic properties to be
+tested. But it does capture interesting and useful classes of
+constraints, such as constraints on the constructors of a property to
+be tested like those on $\mathit{getmin}$ in Dijkstra's
+algorithm. Similar constraints given by predicates can ensure, for
+example, that a program is parameterized over a monad or an
+applicative functor. This could ultimately give an effective way to
+incorporate effects into polymorphic testing.
+
+\subsection{Solution Reduction via Embedding-Projection Pairs}
+
+\begin{definition}\label{def:ep-with-constraints}
+  Let $\sigma[\alpha]$ and $\tau[\alpha]$ be type expressions with a
+  single free type variable, and let $P[\alpha,x]$, $Q[\alpha,x]$ be
+  predicates on $\alpha$ and on $x : \sigma[\alpha]$ and $y :
+  \tau[\alpha]$, respectively. A \emph{constraint-preserving
+    embedding-projection pair} $(e,p) : (\sigma[\alpha], P)
+  \hookrightarrow (\tau[\alpha], Q)$ consists of a pair of polymorphic
+  functions $e : \forall \alpha.~\sigma[\alpha] \to \tau[\alpha]$ and
+  $p : \forall \alpha.~\tau[\alpha] \to \sigma[\alpha]$ such that
+  \begin{displaymath}
+    \begin{array}{ll}
+     & \forall \alpha : *.\; \forall x : \sigma[\alpha]. \, P[\alpha,x]
+      \Rightarrow Q[\alpha,e~\alpha~x]\\ \mbox{and} & \forall \alpha
+      : *. \, (p~\alpha) \circ (e~\alpha) = \mathit{id}_{\sigma[\alpha]}
+    \end{array}
+  \end{displaymath}
+\end{definition}
+
+\noindent
+Of course, we could also consider the condition $\forall \alpha :
+*. \forall y : \tau[\alpha].~Q[\alpha,y] \Rightarrow
+P[\alpha,p~\alpha~x]$ in addition to the two conditions on
+embedding-projection pairs in Definition
+\ref{def:ep-with-constraints}. But since it is not needed for the
+proof below, we omit it.
+
+\begin{lemma}\label{lem:e-p-reduction-constraints}
+  If $(e,p) : (\sigma[\alpha], P) \hookrightarrow (\tau[\alpha], Q)$
+  is a constraint-preserving embedding-projection pair, $H$ is a
+  definable functor, and $h_1$ and $h_2$ are functions of type
+  $\forall \alpha : *.~\sigma[\alpha] \to H \alpha$, then
+  \begin{displaymath}
+    \begin{array}{cl}
+      & (\forall \alpha : *. \forall x : \tau[\alpha].~Q[\alpha,x]
+      \Rightarrow h_1~\alpha~(p~\alpha~x) = h_2~\alpha~(p~\alpha~x))
+      \\ \Rightarrow& \\ & (\forall \alpha : *. \forall x :
+      \sigma[\alpha].~P[\alpha,x] \Rightarrow h_1~\alpha~x =
+      h_2~\alpha~x)
+    \end{array}
+  \end{displaymath}
+\end{lemma}
+
+\begin{proof}
+  Given $\alpha : *$ and $x : \sigma[\alpha]$ such that $P[\alpha,x]$,
+  we have:
+  \begin{displaymath}
+    \begin{array}{cl}
+      & h_1~\alpha~x \\ =&\eqAnnotation{$(e,p)$ is an
+        embedding-projection pair} \\ 
+      & h_1~\alpha~(p~\alpha~(e~\alpha~x)) \\ 
+    = &\eqAnnotation{by hypothesis, since
+      $P[\alpha,x] \Rightarrow Q[\alpha,e~\alpha~x]$} \\ & 
+      h_2~\alpha~(p~\alpha~(e~\alpha~x)) \\
+    = &\eqAnnotation{$(e,p)$ is an embedding-projection pair} \\ 
+      & h_2~\alpha~x 
+    \end{array}
+  \end{displaymath}
+\end{proof}
+
+\begin{example}
+Properties of a sorting network generator of the kind discussed at the
+start of this section can be tested using the obvious theorem
+generalising both Theorem~\ref{thm:dep-containers} and
+Theorem~\ref{thm:constraints}.  Bernardy, Jansson, and Claessen assume
+that the comparator argument to $\mathit{sort}$ is built out of $Min$
+and $Max$, and {\em post facto} impose the free distributive lattice
+contraint on the initial algebra for the type of $\mathit{sort}$.
+\pattynote{Decide on a notation for pairs: $(\alpha, \beta)$ or
+  $\alpha \times \beta$. Be consistent throughout.}  By contrast, we
+impose the free distributive lattice constraint on algebras for $F
+\alpha = (\alpha, \alpha) + (\alpha,\alpha) + \mathrm{Fin}~n$ {\em a
+  priori}. That is, we require all $F$-algebras we consider to satisfy
+the constraint $Q$ requiring that, for all $x$, $y$, and $z$,
+$Min~x~(Max~y~z) = Max~(Min~x~y)~(Min~x~z)$. Since the initial such
+algebra --- i.e., the initial $(F,Q)$-algebra) certainly exists ---
+and since it is in fact just the free distributive lattice $D$
+generated by $\mathrm{Fin}~n$ and having operations $\mathit{Min} :
+(D,D) \to D$ and $\mathit{Max} : (D,D) \to D$, we can formally derive
+that a solution to the polymorphic testing problem for the sorting
+network generator is given by the monomorphic test condition
+\[ \forall n : \mathbb{N}.\;\mathit{sort}_1~D~\mathit{Min}~\mathit{Max}~[1..n] =
+\mathit{sort}_2~D~\mathit{Min}~\mathit{Max}~[1..n]\] In this way we
+can make the informal analysis in~\cite{bjc10} precise.
+\end{example}
+
+In the next section we will see how constraints on algebras in
+canonical form types can be used to derive definitions of operators
+from their specifications.
+
+
+\section{Polymorphic Testing with Coalgebraic Constraints}
+\label{sec:obs-constructors} 
+
+The results of the previous two sections can be used to give a
+sufficient monomorphic condition for the polymorphic testing problem
+with constraints even for types $\sigma[\alpha]$ with coalgebraic, as
+well as algebraic, parts. To see how, consider a specification for a
+data type $H\alpha$ with operations of the following types:
+\[\begin{array}{l}
+g_1 : G_1 \alpha \rightarrow O_1, \, ... \, , \, g_i: G_i  \alpha \rightarrow
+O_i\\ 
+f_1 : F_1 \alpha \rightarrow  \alpha,\, ... \, , \, f_j : F_j \alpha \rightarrow
+ \alpha,\\ 
+h_1 : \alpha \rightarrow H_1  \alpha, \, ... \, , \, h_l :  \alpha
+\rightarrow H_l \alpha,\\
+\end{array}\]
+\noindent
+The type of such a specification is of the form
+\begin{equation}\label{eq:can-type-extended}
+\forall \alpha : *.\;  \Pi_{i \in I} (G_i \alpha \to O_i) \, \times \,
+\Pi_{j \in J} (F_j \alpha \to \alpha) \, \times \, \Pi_{l \in L}
+(\alpha \to H_l \alpha)\; \rightarrow\; H \alpha
+\end{equation}
+\noindent
+We call $\Pi_{j \in J} (F_j \alpha \to \alpha)$ and $\Pi_{l \in L}
+(\alpha \to H_l \alpha)$ the {\em algebra part} and the {\em coalgebra
+  part} of (\ref{eq:can-type-extended}) of $\sigma[\alpha]$,
+respectively.  A term whose type is given by an algebra $F_j \alpha
+\to \alpha$ is a constructor for $\alpha$, and a term whose type is
+given by an observation $G_i \alpha \to O_i$ is an observation on
+$\alpha$, just as before.  But (\ref{eq:can-type-extended}) is not in
+BJC canonical form because the $H_l$s need be neither constant nor
+identity functors. We say that an $h_l : \alpha \to H_l \alpha$ is a
+{\em destructor}\pattynote{or observing constructor or co-constructor
+  or...?} for $\alpha$. Of course, some operations, such as those of
+type $\alpha \to O_i$, can be considered either observations or
+destructors; we leave it to the programmer to apportion the operations
+of $H \alpha$ into observations, constructors, and destructors as they
+see fit. If there is at least one $l \in L$ such that $H_l$ is not a
+constant or identity functor, then $\alpha$ has at least one
+destructor, and we say that a type $\sigma[\alpha]$ of the form in
+(\ref{eq:can-type-extended}) is in {\em extended canonical form}.  The
+type of the specification for priority queues in Dijkstra's algorithm
+--- with operations {\em empty}, {\em insert}, and {\em getmin}, as in
+Section~\ref{sec:motivation} --- is in extended canonical form because
+the type of $getmin$ is of the form $\alpha \to H_i \alpha$ for $H_i
+\alpha = \mathit{Maybe} (a, \mathbb{N}+1, \alpha)$.
+
+\pattynote{Explain rewriting by left Kan extensions.}
+
+If $\sigma[\alpha]$ is in extended canonical form, and if we can
+rewrite the coalgebras $\alpha \to H_l \, \alpha$ using left Kan
+extensions, then there can be no constraints on the coalgebra part of
+$\sigma[\alpha]$. We can therefore apply Theorem~\ref{thm:constraints}
+to solve the polymorphic testing problem with constraints.  For
+example:
+
+\begin{example}
+Consider again the abstract specification of priority queues used in
+Dijkstra's algorithm in Section~\ref{sec:motivation}.  \pattynote{Move
+  example from old intro to here?}  After rewriting with left Kan
+extensions, the type of this specification is in BJC canonical
+form. Since there are no observating constructors in this
+specification, and since the predicate $Q$ representing the constraint
+on $\mathit{getmin}$ introduced in Section~\ref{sec:motivation} is
+equivalent to a predicate on the algebra component of the argument
+type of this specification, we can use Theorem~\ref{thm:constraints}
+to solve the polymorphic testing problem for the abstract
+specification for priority queues provided there exists an initial
+$(F,Q)$-algebra $\mathrm{in}$ for the functor $Ft = 1 + (a,\mathbb{N}
++ 1, t) + \mathit{Lan}_{\mathit{Maybe}~(a, \mathbb{N} + 1,
+  \_)}\,\mathit{Id}\, t$. In this case, we know that in order to test
+two implementations of the above abstract specification, it suffices
+to test them only on the initial $(F,Q)$-algebra.
+\end{example}
+
+The difficulty with the above approach is that it can be nontrivial to
+construct appropriate left Kan extensions, and to construct initial
+$(F,Q)$-algebras after the types of observing constructors have been
+rewritten with those left Kan extensions to become part of the algebra
+$F$. But, fortunately, there is another approach to solving the
+polymorphic testing problem in the presence of certain kinds of
+constraints that mitigates these problems completely. If the
+constraint satisfied by the observing constructor is a so-called {\em
+  canonical constraint} then, assuming it exists, we can take the
+initial algebra for the simpler functor describing just the types of
+the standard constructors as the testing type, and use the canonical
+constraint to define the observing constructors as derived operations
+on all data of that testing type. This allows us to avoid the
+complexity of computing polymorphic test types without losing the
+ability to test efficiently.
+
+To see how this works, we first define the notion of a canonical
+constraint.
+
+\begin{definition}\label{def:can-cons}
+Let $\sigma[\alpha]$ be a type with one free type variable $\alpha$,
+let $H$ be a definable functor, and let $h_1, h_2 : \forall \alpha :
+*.\, \sigma[\alpha] \to H \alpha$.  If there exist functors
+$\{G_i\}_{i \in I}$, $\{F_j\}_{j \in J}$, and $\{H_l\}_{l \in L}$ and
+types $\{O_i\}_{i \in I}$ such that
+\[\sigma[\alpha] = \Pi_{i \in I} (G_i \alpha \to O_i) \; \times
+  \; \Pi_{j \in J} (F_j \alpha \to \alpha) \; \times \; \Pi_{l \in L}
+  (\alpha \to H_l \alpha)\]
+where $F = \Sigma_{j \in J} F_j$, then we say that a predicate
+$Q[\tau, (\overline{f_j}, \overline{h_l})]$ on types $\tau$, algebras
+$\overline{f_j}$, and coalgebras $\overline{h_l}$ is a {\em canonical
+  constraint} if it comprises
+\begin{itemize}
+\item a predicate $Q'[\tau,\overline{f_j}]$ whose initial
+  $(F,Q')$-algebra $\mathrm{in} : F (\mu (F,Q')) \to \mu (F,Q')$
+  exists, and
+\item a predicate $Q''[\tau, (\overline{f_j},\overline{h_l})]$ that
+  defines the coalgebras $\overline{h_l}$ on $\mu (F,Q')$, i.e., a set
+  of Horn clauses $Q''[\tau, (\overline{f_j},\overline{h_l})]$ that
+  have the $h_l$s as their heads and that completely determine the
+  values of $h_l\,z$ for every $l \in L$ and $z : \mu(F,Q')$. 
+\end{itemize}
+\end{definition}
+\noindent
+The second clause of Definition~\ref{def:can-cons} entails that
+$Q''[\mu(F,Q'), (\mathrm{in},\overline{h_l})]$ holds. Note that
+$Q''[\tau, (\overline{f_j}, \overline{h_l})]$ need not define the
+$\overline{h_l}$s on values of types other than $\mu (F,Q')$.
+
+The intuition underlying Definition~\ref{def:can-cons} is that we
+should not need to test the constraint $Q''$ on every data type since
+the algebra part of $\sigma[\tau]$ entails that we are interested only
+in the initial $(F,Q')$-algebra $(\mu(F,Q'), \mathrm{in})$. The
+requirement in the second clause of the definition that the predicate
+$Q''$ in a canonical constraint $Q$ actually defines each $h_l$ on
+data of type $\mu (F,Q')$ ensures the existence of a $\sum_{l \in
+  L}H_l$-coalgebra structure on $\mu(F,Q')$ because $Q'[\mu(F,Q'),
+  \mathrm{in}]$ is satisfied, and this in turn ensures that $Q[\mu
+  (F,Q'), (\mathrm{in},\overline{h_l})]$ is actually equivalent to
+the constraint $Q'[\mu(F,Q'), \mathrm{in}]$ on just the algebra part
+of $\sigma[\mu(F,Q')]$.
+
+\pattynote{$h_1$ and $h_2$ are functions to test and $h_l$s are
+  coalgebras. Change notation of one of these to avoid clashes.}
+\begin{thm}\label{thm:ext-constraints} 
+Let $\sigma[\alpha]$, $\{G_i\}_{i \in I}$, $\{F_j\}_{j \in J}$,
+$\{H_l\}_{l \in L}$, $\{O_i\}_{i \in I}$, $F$, $H$, $h_1$, $h_2$, $Q$,
+and $Q'$ be as in Definition~\ref{def:can-cons}. If $P[\tau,
+  (p,\overline{f_j},\overline{h_l})]$ is equivalent to a canonical
+constraint $Q[\tau,(\overline{f_j},\overline{h_l})]$ then the
+following condition is a solution for this instance of the polymorphic
+testing problem with constraints:
+\begin{equation}\label{eq:solution-constraints-2}
+  \forall \overline{p_i : G_i (\mu (F,Q')) \to O_i}.\;\;
+ h_1~(\mu (F,Q'))~(\overline{p_i}, \mathrm{in},\overline{h_l}) =
+ h_2~(\mu (F,Q'))~(\overline{p_i}, \mathrm{in},\overline{h_l}) 
+\end{equation}
+\end{thm}
+\noindent
+Theorem~\ref{thm:constraints} is thus the special case of
+Theorem~\ref{thm:ext-constraints} for the polymorphic testing problem
+with constraints when the canonical form type has no coalgebraic part.
+
+\begin{lemma}
+Let $h : \forall \alpha : *.\; \Pi_{i \in I} (G_i \alpha \to O_i) \,
+\times \, \Pi_{j \in J} (F_j \alpha \to \alpha) \, \times \, \Pi_{l
+  \in L} (\alpha \to H_l \alpha)\; \rightarrow\; H \alpha$ and $F =
+\Sigma_{j \in J} F_j$. If $Q[\tau, (\overline{f_j}, \overline{h_l})]$
+is a canonical constraint, 
+%and if there exists an initial $(F,Q')$-algebra $(\mu (F,Q'),
+%\mathrm{in} : F(\mu (F,Q')) \to \mu (F,Q'))$,
+%%this is implied by canonical constraint
+then
+\[\begin{array}{l}
+\forall \alpha : *.\, \forall \overline{p_i : G_i \alpha \to O_i}.\;
+\forall \overline{f_j : F_j \alpha \to \alpha}. \; \forall
+\overline{h_l : \alpha \to H_l \alpha}.\\ \;\;Q[\alpha,
+  (\overline{f_j}, \overline{h_l})] \Rightarrow\\ \;\;\;\;h \,\alpha
+\,(\overline{p_i},\overline{f_j}, \overline{h_l}) = H \,
+\fold{\overline{f_j}} \, (h \, (\mu(F,Q')) \, (\langle p_i \circ G_i
+\fold{\overline{f_j}}\rangle_{i \in I}, \mathrm{in}, \overline{h_l})
+\end{array}\]
+\noindent
+where $\fold{\overline{f_j}}$ is the unique $(F,Q')$-algebra
+homomorphism from $(\mu(F,Q'), \mathrm{in})$ to $(\alpha,
+\overline{f_j})$.
+\end{lemma}
+
+\begin{proof}
+The proof is essentially that of
+Lemma~\ref{lem:initial-algebra-with-constraints-ok}. To construct the
+$(F,Q')$-algebra homomorphism from $\mu (F,Q')$ to $\alpha$ we need to
+know that $Q'[\alpha,\overline{f_j}]$ holds, but this is satisfied by
+the assumption that $Q$ is canonical. We also need to know that
+$Q''[\mu(F,Q'),(\mathrm{in}, \overline{h_l})]$ is satisfied, but this
+is guaranteed by the second clause of Definition~\ref{def:can-cons}.
+\end{proof}
+
+The proof of Theorem~\ref{thm:ext-constraints} is now immediate. To
+see how Theorem~\ref{thm:ext-constraints} more easily solves the
+polymorphic testing problem in the presence of coalgebraic constraints
+that define destructors on $\mu(F,Q')$ we once again consider
+Dijkstra's algorithm. \pattynote{Hidden foundations?}
+
+\begin{example}\label{ex:getmin}
+The constraints satisfied by the observing constructor
+$\mathit{getmin}$ in the abstract specification for priority queues
+are canonical constraints since they define $\mathit{getmin}$ on the
+initial algebra $[(a, \mathbb{N} + 1)]$ for the functor $F t = 1 + (a,
+\mathbb{N} + 1, t) = 1 + (a, \mathbb{N}) \times t$ describing the
+types of the standard constructors $\mathit{empty}$ and
+$\mathit{insert}$ for priority queues. Indeed, these constraints give
+the following pattern-matching definition of $\mathit{getmin}$ on all
+terms of type $[(a, \mathbb{N} + 1)]$:
+\[\begin{array}{lll}
+\mathit{getmin~empty}            & = & \mathit{Nothing}\\
+\mathit{getmin~(insert~(a,d)~t)} & = & \mathit{case~getmin~t~of}\\
+ & & \;\;\;\; \mathit{Nothing} \;\;\;\;\;\;\; \longrightarrow
+                 \mathit{Just}~(a, d, t)\\ 
+ & & \;\;\;\; \mathit{Just}~ (a',d',t') \longrightarrow \mathit{if} d < d'\\ 
+ & & \hspace*{1.3in} \mathit{then~Just~(a, d, insert~(a',d')~t')}\\
+ & & \hspace*{1.3in} \mathit{else~Just~(a', d', insert~(a,d)~t')}
+\end{array}\]
+The definition shows that $\mathit{getmin}$ is a redundant constructor
+for priority queues; indeed, for any value $x : [(a,\mathbb{N} + 1)]$,
+$\mathit{getmin}\,x$ is defined entirely in terms of $\mathit{empty}$
+and $\mathit{insert}$. By Theorem~\ref{thm:ext-constraints} we thus
+need only test polymorphic properties of programs involving priority
+queues on the type $[(a,\mathbb{N} + 1)]$, provided we still
+parameterize over functions $getmin$ satisfying the given
+constraints. In particular, this means that we can fully test
+Dijkstra's algorithm just by testing on the simplest implementation of
+priority queues as lists.
+\end{example}
+\noindent
+One way to read Theorem~\ref{thm:ext-constraints} is as reducing the
+testing of a function defined using {\em ad hoc} polymorphism --- as
+embodied, for example, in an abstract specification for a data type
+--- to the testing of a parametric polymorphic function on a
+``simplest'' implementation of that specification.
+
+The same reasoning used above for observing constructors applies to
+standard constructors, too. As a result, we can always restrict
+attention to a functor describing the types of a ``basis set'' of
+standard and observing constructors for a polymorphic type in extended
+canonical form --- i.e., a set of standard and observing constructors
+with the property that all other standard and observing constructors
+can be completely defined on the initial algebra of the functor given
+by the constructors in the set --- and take the initial algebra of
+this functor as our polymorphic testing type for properties of the
+extended type. The price we have to pay is that, in the simpler
+property to be tested, we must still explicitly quantify over those
+non-basis constructors not satisfying canonical constraints relative
+to basis constructors. In effect, then, we are permitted to decide for
+every standard or observing constructor whether to include it in the
+algebra determining the polymorphic testing type or to quantify over
+explicitly it when testing. The examples in the subsections below show
+how this choice can impact testing. \pattynote{Make sure they do.}
+
+\pattynote{Bob says: Better than BJC in that it gives a sharp
+  condition for when we have to quantify over (standard and observing)
+  constructors in testing. BJC quantify over all observations in
+  formal stuff, but in their examples they don't. {\bf But I don't see
+    such an example.} We are able to give a good condition for when we
+  can make that split. We also allow observing constructors at all,
+  which BJC don't do.
+
+Relate to Section 4.2 of BJC by doing their Example 8?}
+
+\section{Higher-order Polymorphic Testing}
+
+\pattynote{It is implicit that there is a category of Haskell types
+  and a category of Haskell type constructors here. Do things
+  semantically or syntactically?}
+
+It is natural to model monads and other type constructors that are
+functors as least fixed points of functors on the category of
+endofunctors on $\cal C$, i.e., on the functor category of $\cal
+C$. In this category, objects are functors and morphisms are natural
+transformations. Functors on functor categories are called {\em
+  higher-order functors}.
+
+Writing $F \rightarrow G$ for $\forall \alpha : *.\ F \alpha
+\rightarrow G \alpha$ for (first-order) functors $F$ and $G$, we can
+state the {\em higher-order polymorphic testing problem} as:
+
+\begin{verse}\label{problem:hpoly-testing}
+  \hspace*{0.2in}Let $\sigma[L] : (* \rightarrow *) \rightarrow (*
+  \rightarrow *)$ be a map between type constructors with a free type
+  constructor variable $L$, and let $H : (* \rightarrow *) \rightarrow
+  (* \rightarrow *)$ be a definable higher-order functor. Given a pair
+  of functions $H_1$, $H_2 : \forall L: * \rightarrow *.\ \sigma[L]
+  \rightarrow HL$, find a \emph{monomorphic} sufficient condition that
+  implies the following property:
+  \begin{equation}
+    \label{eq:hproblem}
+    \forall L : * \rightarrow *. \forall K : \sigma[L].~H_1~L~K = H_2~L~K
+  \end{equation}
+\end{verse}
+
+\noindent
+We have the following instantiation of Theorem~\ref{thm:poly-testing}
+for higher-order functors:
+
+\begin{thm}\label{thm:hpoly-testing}
+Let $\sigma[L]$, $H$, $H_1$ and $H_2$ be as in the description of the
+higher-order polymorphic testing problem. If there exist higher-order
+functors $\{G_i\}_{i \in I}$ and $F$, and type constructors
+$\{O_i\}_{i \in I}$ such that
+\begin{displaymath}
+  \sigma[L] = \left( \Pi_{i \in I} (G_i L \to O_i)\right) \times (F L
+  \to L)
+\end{displaymath}
+and if there exists an initial $F$-algebra $(\mu F, \mathrm{in} : F(\mu
+F) \to \mu F)$, then the following condition is a solution for this
+instance of the polymorphic testing problem:
+\begin{equation}
+  \label{eq:hsolution-pt}
+  \forall p : \Pi_{i \in I}(G_i(\mu F) \to O_i).~H_1~\mu F~(p,
+  \mathrm{in}) = H_2~\mu F~(p, \mathrm{in})
+\end{equation}
+\end{thm}
+
+\vspace*{0.2in}
+
+We can similarly instantiate Theorems~\ref{thm:e-p-reduction}
+and~\ref{thm:dep-containers} in the higher-order setting. We first need
+
+\begin{definition}
+  Let $\sigma[L]$ and $\tau[L]$ be maps between type constructors with
+  a single free type constructor variable $L$. A \emph{higher-order
+    embedding-projection pair} $(e,p) : \sigma[L] \hookrightarrow
+  \tau[L]$ consists of a pair of functions $e : \forall L: *
+  \rightarrow *.~\sigma[L] \to \tau[L]$ and $p : \forall L: *
+  \rightarrow *.~\tau[L] \to \sigma[L]$ such that $\forall L : *
+  \rightarrow *. \; (p~L) \circ (e~L) = \mathrm{id}_{\sigma[L]}$.
+\end{definition}
+
+\noindent
+We then have the following higher-order analogue of
+Theorem~\ref{thm:e-p-reduction}:
+
+\begin{thm}\label{thm:he-p-reduction}
+  If $\tau[L] = (\Pi_{i \in I} (G_i L \to O_i)) \times (F L \to L)$ is
+  a type constructor with a free type constructor variable $L$, if
+  there exists an initial $F$-algebra $(\mu F, \mathrm{in} : F(\mu F)
+  \to \mu F)$, if $(e,p) : \sigma[L] \hookrightarrow \tau[L]$ is a
+  higher-order embedding-projection pair, if $H$ is a definable
+  higher-order functor, and if $H_1$ and $H_2$ are functions of type
+  $\forall L: * \rightarrow *.~\sigma[L] \to H L$, then
+  \begin{displaymath}
+    \begin{array}{cl}
+      &  \forall s : \Pi_{i \in I}(G_i(\mu F) \to O_i).~H_1~\mu F~(s,
+          \mathrm{in}) = H_2~\mu F~(s, \mathrm{in})
+      \\
+      \Rightarrow& \\
+      & \forall L : * \rightarrow *.\ \forall K : \sigma[L].~H_1~L~K =
+      H_2~L~K 
+    \end{array}
+  \end{displaymath}
+\end{thm}
+
+Finally, we have the following higher-order analogue of
+Theorem~\ref{thm:dep-containers}:
+
+\begin{thm}\label{thm:hdep-containers}
+Let $\sigma[L]$, $H$, $H_1$ and $H_2$ be as in the description of the
+higher-order polymorphic testing problem. If there exist higher-order
+functors $\{G_i\}_{i \in I}$, a type $S$ \pattynote{Or do we want the
+  shape of a higher-order container to be a type or a functor?},
+higher-order functors $F_s$ for all $s : S$, and functors $\{O_i\}_{i
+  \in I}$ such that
+\begin{equation}
+  \label{eq:hsolution-2-type}
+  \sigma[L] = \left(\Pi_{i \in I} (G_i L \to O_i)\right)
+  \times \Sigma s : S.~(F_s L \to L)
+\end{equation}
+and for all $s : S$ there exists an initial $F_s$-algebra $(\mu F_s,
+\mathrm{in}_s : F_s(\mu F_s) \to \mu F_s)$, then the following condition
+is a solution for this instance of the higher-order polymorphic
+testing problem:
+\begin{equation}
+  \label{eq:solution-2}
+  \forall s : S. \forall p : \Pi_{i \in I}(G_i(\mu F_s) \to
+  O_i).~H_1~\mu F_s~(p, s, \mathrm{in}_s) = H_2~\mu F_s~(p, s,
+  \mathrm{in}_s)
+\end{equation}
+\end{thm}
+\noindent
+
+\subsection{Example: Perfect Trees}
+
+We consider the data type of {\em perfect trees} given by 
+
+\[\mathit{PTree}~\alpha = \mathit{PLeaf}~\alpha +
+\mathit{PNode}~(\mathit{PTree}~(\alpha,\alpha))\] 
+
+\noindent
+This data type can be seen as the carrier of the initial algebra for
+the higher-order functor
+
+\[\mathit{HPTree}~F~\alpha = \mathit{HPLeaf}~\alpha +
+\mathit{HPNode}~(\mathit{HPTree}~F~(\alpha,\alpha))\] 
+
+\vspace*{0.1in}
+
+\begin{example}\label{ex:pcount}
+Suppose we want to compare two functions --- suggestively named
+$\mathit{pcount}_1$ and $\mathit{pcount_2}$ --- of type
+\begin{equation}
+    \forall \alpha : *.~\mathit{PTree}~\alpha \rightarrow \mathrm{Int}
+\end{equation}
+\noindent
+i.e., mapping $\mathit{PTree}$ to $K_{\mathrm{Int}}$. We can
+instantiate Theorem~\ref{thm:hdep-containers} to solve this instance
+of the higher-order polymorphic testing problem. We first observe that
+$\mathit{PTree}\,\alpha$ is isomorphic to the data type lists over
+$\alpha$ whose lengths are powers of 2, so that the data constructor
+$\mathit{PTree}$ can be represented by the ``higher-order container''
+\pattynote{ I don't yet know how to finish this example.}
+\[\Sigma n : \mathbb{N}.\ (F_n\,L \rightarrow L)\]
+%\[\Sigma i : \mathrm{Fin}~n.\ (F_i\,L \rightarrow L)\]
+
+\noindent
+Here, 
+%$F_iL = K_1$ for $i = 1,...,n-1$ (where, for any type $A$, $K_A$
+%is the constantly $A$-valued functor, and $1$ is the unit type), and
+$F_n = K_{\mathrm{Fin}\,2^n}$??? $\Delta^n$???? $K_1$?????
+%\Delta^n$ for $\Delta \alpha = (\alpha,\alpha)$. 
+Thus, the
+type in~(\ref{eq:example-problem-1}) is thus isomorphic to
+
+%\[\forall \alpha : *.\ \Sigma n : \mathbb{N}.\ (F_n\,L\, \alpha
+%\rightarrow L \,\alpha) \rightarrow \mathrm{Int},\]
+
+%\[\forall \alpha : *.\ \Sigma i : \mathrm{Fin}~n.\ (F_i\,L\, \alpha
+%\rightarrow L \,\alpha) \rightarrow \mathrm{Int},\]
+
+%\noindent
+%i.e., to
+
+\[\Sigma n : \mathbb{N}.\ (F_n\,L\,
+\rightarrow L ) \rightarrow K_{\mathrm{Int}}\] 
+
+%\[\Sigma i : \mathrm{Fin}~n.\ (F_i\,L\,
+%\rightarrow L ) \rightarrow K_{\mathrm{Int}}\] 
+
+\noindent
+This type is the instance of the type schema from
+Theorem~\ref{thm:hdep-containers} where $H$ is the higher-order
+functor mapping each functor $L$ to $\mathrm{Int}$, i.e., $H =
+K_{K_{\mathrm{Int}}}$. The monomorphic instance
+
+\begin{equation}
+  \forall n : \mathbb{N}.\ \mathit{pcount}_1~\mu F_n~(n,
+  \mathrm{in}_n) = \mathit{pcount}_2~\mu F_n~(n, \mathrm{in}_n)
+%  \forall i : \mathrm{Fin}~n.\ \mathit{pcount}_1~\mu F_i~(i,
+%  \mathrm{in}_s) = \mathit{pcount}_2~\mu F_i~(i, \mathrm{in}_s)
+\end{equation}
+\noindent
+i.e.,
+\begin{equation}
+  \forall n : \mathbb{N}.\ \forall \alpha :
+  *.\ \mathit{pcount}_1~(\mu F_n \, \alpha)~(n, \mathrm{in}_n
+  \,\alpha) = \mathit{pcount}_2~(\mu F_n \, \alpha)~(n, \mathrm{in}_n
+  \,\alpha)
+%  \forall i : \mathrm{Fin}~n.\ \forall \alpha :
+%  *.\ \mathit{pcount}_1~(\mu F_i \, \alpha)~(i, \mathrm{in}_i
+%  \,\alpha) = \mathit{pcount}_2~(\mu F_i \, \alpha)~(i, \mathrm{in}_i
+%  \,\alpha)
+\end{equation}
+\noindent
+thus gives a sufficient condition for the higher-order polymorphic
+testing problem for the (common) type of $\mathit{pcount}_1$ and
+$\mathit{pcount}_2$.
+More concretely, this condition expands to testing
+\begin{equation}
+  \forall n : \mathbb{N}.\ \forall \alpha :
+  *.~\mathit{pcount}_1~1~P =
+  \mathit{pcount}_2~1~P
+%  \forall n : \mathbb{N}.\ \forall \alpha :
+%  *.~\mathit{pcount}_1~(\Delta^n~\alpha)~P =
+%  \mathit{pcount}_2~(\Delta^n~\alpha)~P
+\end{equation}
+\noindent
+where $P$ is the perfect tree corresponding to
+$(n, id_{\Delta^n\alpha})$???????, i.e., the perfect tree of depth $n$
+with unit data.
+%\begin{equation}
+%  \forall n : \mathbb{N}.\ \forall \alpha :
+%  *.~\mathit{pcount}_1~1~(\Delta^n~()) =
+%  \mathit{pcount}_2~1~(\Delta^n~())
+%\end{equation}
+
+\noindent
+holds.
+\end{example}
+
+
+\subsection{Higher-order Polymorphic Testing with Constraints}
+
+\begin{definition}\label{def:hcan-cons}
+Let $\sigma[L]$ be a type with one free type constructor variable $L$,
+let $H$ be a definable higher-order functor, and let $h_1, h_2 :
+\forall L :
+* \rightarrow *.\, \sigma[L] \to H L$.  If there exist higher-order functors
+$\{G_i\}_{i \in I}$, $\{F_j\}_{j \in J}$, and $\{H_m\}_{m \in M}$ and
+functors $\{O_i\}_{i \in I}$ such that
+\[\sigma[L] = \Pi_{i \in I} (G_i L \to O_i) \; \times
+  \; \Pi_{j \in J} (F_j L \to L) \; \times \; \Pi_{m \in M} (L \to H_m
+  L)\] where $F = \Sigma_{j \in J} F_j$, then we say that a predicate
+  $Q[L, (\overline{f_j}, \overline{h_m})]$ on type constructors $L$,
+  algebras $\overline{f_j}$, and coalgebras $\overline{h_l}$ is a {\em
+    canonical higher-order constraint} if it comprises
+\begin{itemize}
+\item a predicate $Q'[L,\overline{f_j}]$ whose initial
+  $(F,Q')$-algebra $\mathrm{in} : F (\mu (F,Q')) \to \mu (F,Q')$
+  exists, and
+\item a predicate $Q''[L, (\overline{f_j},\overline{h_l})]$ that
+  defines the coalgebras $\overline{h_m}$ on $\mu (F,Q')$, i.e., a set
+  of Horn clauses $Q''[L, (\overline{f_j},\overline{h_m})]$ that
+  have the $h_m$s as their heads and that completely determine the
+  values of $h_m\,z$ for every $m \in M$ and $z : \mu(F,Q')$. 
+\end{itemize}
+\end{definition}
+\noindent
+
+\begin{thm}\label{thm:ext-constraints} 
+Let $\sigma[L]$, $\{G_i\}_{i \in I}$, $\{F_j\}_{j \in J}$, $\{H_m\}_{m
+  \in M}$, $\{O_i\}_{i \in I}$, $F$, $H$, $h_1$, $h_2$, $Q$, and $Q'$
+be as in Definition~\ref{def:hcan-cons}. If $P[L,
+  (p,\overline{f_j},\overline{h_m})]$ is equivalent to a canonical
+higher-order constraint $Q[L,(\overline{f_j},\overline{h_m})]$ then
+the following condition is a solution for this instance of the
+polymorphic testing problem with constraints:
+\begin{equation}\label{eq:solution-constraints-2}
+  \forall \overline{p_i : G_i (\mu (F,Q')) \to O_i}.\;\;
+ h_1~(\mu (F,Q'))~(\overline{p_i}, \mathrm{in},\overline{h_m}) =
+ h_2~(\mu (F,Q'))~(\overline{p_i}, \mathrm{in},\overline{h_m}) 
+\end{equation}
+\end{thm}
+\noindent
+
+\subsection{Monadic Constraints}
+
+
+
+
+
+\begin{thebibliography}{12345}
+
+\bibitem{aag03} M.\ Abbott, T.\ Altenkirch, and
+  N.\ Ghani. Categories of Containers. Proceedings, Foundations of
+  Software Science and Computation Structures 2003, pp. 23~--~38.
+
+\bibitem{agda} Agda. Available at {tt
+  http://wiki.portal.chalmers.se/agda/pmwiki.php}. 
+
+\bibitem{ber11} J.-P.\ Bernardy. {\em A Theory of Parametric
+  Polymorphism and an Application.} PhD Thesis, Chalmers University of
+  Technology, 2011. 
+
+\bibitem{bjc10} J.-P.\ Bernardy, P.\ Jansson, and
+  K.\ Claessen. Testing Polymorphic Properties. Proceedings, European
+  Symposium on Programming 2010, pp. 125~--~144.
+
+\bibitem{ch00} K. Claessen and J. Hughes. QuickCheck: A Lightweight
+  Tool for Random Testing of Haskell Programs. In {\em Proceedings,
+    International Conference on Functional Programming},
+  pp. 268~--~279, 2000.
+
+\bibitem{dij59} E.W. Dijkstra: A Note on Two Problems in Connexion
+  with Graphs. {\em Numerische Mathematik} 1 (1959), pp. 269~--~271. 
+
+\bibitem{dht03} P. Dybjer, Q. Haiyan, and M. Takeyama. Combining
+  Testing and Proving in Dependent Type Theory. In {\em Proceedings,
+    Theorem Proving in Higher Order Logics}, pp. 188~--~203, 2003.
+
+\bibitem{hal} T. Hallgren. Alfa. Available from {\tt
+  http://www.cs.chalmers.se/$\sim$hallgren/alfa}. 
+
+\bibitem{jg07} P. Johann and N. Ghani. Initial Algebra Semantics is
+  Enough! In {\em Proceedings, Typed Lambda
+  Calculus and Applications}, pp. 207~--~222, 2007.
+
+\bibitem{jg08} P. Johann and N. Ghani. Foundations for Structured
+  Programming with GADTs. Proceedings, Principles of Programming
+  Languages 2008, pp. 297~--~308.
+
+\bibitem{knu98} D. Knuth. {\em The Art of Computer Programming, Volume 3:
+  Sorting and Searching (2nd edition)}. Addison-Wesley Professional,
+  1998. 
+
+\bibitem{mac71}
+S.\ {MacLane}. {C}ategories for the {W}orking {M}athematician.
+Springer-Verlag, 1971.
+
+\bibitem{oka99}
+C. Okasaki. {\em Purely Functional Data Structures}. Cambridge
+University Press, 1999.
+
+\bibitem{rey83} J.~Reynolds. Types, Abstraction and Parametric
+  Polymorphism.  In {\em Proceedings, Information Processing},
+  pp. 513~--~523, 1983.
+
+\bibitem{voi08} J. Voigtl\"ander. Much Ado About Two (Pearl): A Pearl
+  on Parallel Prefix Computation. In {\em Procedings, Principles of
+    Programming Languages}, pp. 29~--~35, 2008.
+
+\end{thebibliography}
+
+
+\end{document}
