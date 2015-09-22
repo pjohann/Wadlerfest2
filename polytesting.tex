@@ -1,6 +1,11 @@
 \documentclass{llncs}
 
+\usepackage{stmaryrd}
+
 \newcommand{\mbind}{\mathrel{>\kern-0.45em>\kern-0.45em=}}
+\newcommand{\fold}[1]{\llparenthesis #1 \rrparenthesis} % FIXME: need to define this
+\newcommand{\eqAnnotation}[1]{\hspace{2cm}\left\{\textrm{#1}\right\}}
+\newcommand{\listappend}{\mathrel{+\kern-3pt+}}
 
 \title{Testing Higher-Kinded Polymorphic Functions}
 \author{Robert Atkey\inst{1}, Patricia Johann\inst{2}}
@@ -22,72 +27,362 @@ Appalachian State University
 
 \section{Introduction}
 
-In his paper \emph{Theorems for Free}, Phil Wadler made the following
-claim:
+Of his many contributions, Prof.~Phil Wadler has contributed
+profoundly to Computer Science by taking deep ideas from the
+theoretical field of denotational semantics and exposing them as
+programming \emph{tools}. In \emph{Theorems for Free!}, he used
+Reynolds' relational parametricity to show that interesting theorems
+about polymorphic functions can be deduced from their types. He also
+used Moggi's use of monads to capture computational effects to provide
+a practical tool for incoporating effects into a purely functional
+language.
+
+In this paper, we combine these lines of work with the work of
+Bernardy, Jansson and Claessen on testing polymorphic functions. Since
+monads are higher-kinded entities, this naturally leads us to the
+problem of testing functions that are polymorphic at higher-kind.
+
+\subsection{Free Theorems}
+
+In his famous paper \emph{Theorems for Free!}
+\cite{DBLP:conf/fpca/Wadler89}, Phil Wadler made the following claim:
 \begin{quotation}
-  XXX
+  \noindent
+  Write down the definition of a polymorphic function on a piece of
+  paper. Tell me its type, but be careful not to let me see the
+  function's definition. I will tell you a theorem that the function
+  satisfies.
 \end{quotation}
-Characterise free theorems as essentially ``invariance'' properties of
-programs with polymorphic types.
+Phil then goes on to make good on his claim, exploiting Reynolds'
+theory of relational parametricity \cite{DBLP:conf/ifip/Reynolds83} to
+derive interesting properties of a range of polymorphic functions. His
+initial example is a function $r$ with the following polymorphic type:
+\begin{displaymath}
+  \mathit{r} :: \forall \alpha.~[\alpha] \to [\alpha]
+\end{displaymath}
+Just as Phil claims, it is possible, solely from the type of this
+function, to derive the following theorem: for all types $\alpha$ and
+$\beta$, functions $f :: \alpha \to \beta$, and lists
+$\mathit{xs} :: [\alpha]$,
+\begin{displaymath}
+  \mathit{map}~f~(\mathit{r}~\mathit{xs}) \equiv \mathit{r}~(\mathit{map}~f~\mathit{xs}).
+\end{displaymath}
+Since $\mathit{r}$ must operate the same way at whatever type $\alpha$
+it is instantiated with, it does not matter whether we transform
+$\alpha$ values to $\beta$ values via $f$ before or after applying
+$\mathit{r}$. Thus we have a kind of invariance property of any
+function $r$ of type $\forall \alpha.~[\alpha] \to [\alpha]$.
 
-FIXME: Introduce the basic idea behind the BJC approach to polymorphic
-testing, with an example.
+However, for programming, we are usually interested in specific
+functions of certain types. For example, the function $r$ may be named
+$\mathit{reverse}$, and we would expect it to actually reverse
+lists. The fact that $\mathit{reverse}$ commutes with $\mathit{map}$
+seems to be useful to know, but it does not seem to assure us that
+$\mathit{reverse}$ actually does what it name suggests. Infinitely
+many functions with the same type as $\mathit{reverse}$ satisfy the
+property of commuting with $\mathit{map}$. For example, the identity
+function, or the function that only reverses lists of even length.
 
-Other related work:
-\begin{itemize}
-\item Harrison's ``Without Loss of Generality''
-\end{itemize}
+It would seem now that we need to actually look at the definition of
+$\mathit{reverse}$ to check that it actually does reverse lists,
+reasoning by induction on the length of the input list, and so forth.
 
-Our contribution: extension of the BJC approach to higher kinded
-polymorphism: type constructor classes, which opens the possibility of
-testing imperative programs.
+\subsection{Testing Polymorphic Functions}
+
+There is another, more lightweight, approach however: we could
+\emph{test} the function $\mathit{reverse}$ on different inputs to
+check that it actually reverses lists. Following the example of
+QuickCheck \cite{DBLP:conf/icfp/ClaessenH00}, we could test
+$\mathit{reverse}$ on random inputs, to make sure our tests are
+relatively unibased. In general, testing cannot achieve the same
+levels of guarantee that formal proof can, but it is often much
+cheaper to apply, and can help to discover defects before embarking on
+a formal proof (FIXME: Isabelle's Nitpick).
+
+Using a QuickCheck style approach, we test our $\mathit{reverse}$
+function against a reference implementation on randomly generated
+lists. We want to test the following property, for arbitrary
+$\mathit{xs} :: [\alpha]$,
+\begin{equation}\label{eq:reverse-test}
+  \mathit{reverse}~\mathit{xs} \equiv \mathit{revSpec}~\mathit{xs}
+\end{equation}
+where $\mathit{revSpec}$ is defined as the inefficient (it has
+quadratic complexity), but ``obviously'' correct recursive
+implementation of list reversal:
+\begin{displaymath}
+  \begin{array}{l@{\hspace{0.3em}}l@{\hspace{0.3em}}cl}
+    \mathit{revSpec}& [] & = & [] \\
+    \mathit{revSpec}& (x\mathord:xs) & = & \mathit{revSpec}~\mathit{xs} \listappend [x]
+  \end{array}
+\end{displaymath}
+However, we immediately run into a problem: the function
+$\mathit{reverse}$ is polymorphic! It effectively takes two inputs: a
+type $\alpha$ and a list of values of type $\alpha$. We cannot
+generate random lists of an unknown type $\alpha$. What values would
+we pick? Generating random types to instantiate $\alpha$ with also
+will not work. If we randomly generate some complex function type,
+then how should we generate random inhabitants of it?
+
+Happily, there is a solution to this problem: we can use Phil's free
+theorem to pick the a type instantiation that will stand in for all
+possible types! The observation that this is possible is due to
+Bernardy, Jansson and Claessen, in their paper \emph{Testing
+  Polymorphic Properties} \cite{DBLP:conf/esop/BernardyJC10}. Their
+reasoning goes as follows.
+
+Assume for the moment that we are only interested in testing on lists
+$\mathit{xs}$ of length $n$, but still of some arbitrary type
+$\alpha$. We can form the type $\mathit{Fin}~n$ of natural numbers
+less than $n$, which represent positions in lists of length $n$. Let
+$\mathit{positions}_n = [0, 1, ..., n-1] :: [\mathit{Fin}~n]$ and let
+$f :: \mathit{Fin}~n \to \alpha$ be the list indexing function. Now,
+it is the case that $\mathit{xs} = \mathit{map}~f~\mathit{positions}_n$,
+and we can apply the type $\forall \alpha.~[\alpha] \to [\alpha]$'s
+free theorem to both sides of the property (\ref{eq:reverse-test})
+that we want to test:
+\begin{displaymath}
+  \begin{array}{l}
+    \mathit{reverse}~\mathit{xs} \equiv \mathit{reverse}~(\mathit{map}~f~\mathit{positions}_n) \equiv \mathit{map}~f~(\mathit{reverse}~\mathit{positions}_n) \\
+    \mathit{revSpec}~\mathit{xs} \equiv \mathit{revSpec}~(\mathit{map}~f~\mathit{positions}_n) \equiv \mathit{map}~f~(\mathit{revSpec}~\mathit{positions}_n) \\
+  \end{array}
+\end{displaymath}
+Thus, to check
+$\mathit{reverse}~\mathit{xs} \equiv \mathit{revSpec}~\mathit{xs}$,
+for lists $\mathit{xs}$ of length $n$ and arbitrary element type
+$\alpha$, it suffices to show that
+$\mathit{reverse}~\mathit{positions}_n \equiv
+\mathit{revSpec}~\mathit{positions}_n$.
+
+To test the property for all $n$, we use a QuickCheck-style approach
+to randomly generate lengths $n$, execute both sides of the equation
+and check for equality. By the free theorem, and the reasoning above,
+if there is a counterexample to the correctness of reverse, then we
+can find it by finding the length $n$ on which $\mathit{reverse}$
+fails to act like $\mathit{revSpec}$.
+
+\subsection{Testing Monadic Functions}
+
+Another of Phil's contributions to the science of computer programming
+is to introduce \emph{monads} as a practical programming tool, taking
+them from Moggi's original use as a structuring device for
+denotational semantics \cite{DBLP:conf/lics/Moggi89}.
+
+A key useful property of monads for programming is that there is more
+than one monad. So we use the $\mathit{State}$ monad if we want to
+write stateful programs, the $\mathit{List}$ monad if we want to write
+non-deterministic programs, the $\mathit{Writer}$ monad if we want to
+write programs that do logging, and so on.
+
+The fact that there exists more than one monad means that it natural
+to want to write programs that polymorphic over all monads. For
+example, the $\mathit{sequence}$ function from the Haskell standard
+library:
+\begin{displaymath}
+  \mathit{sequence} :: \forall m~a.~\mathit{Monad}~m \Rightarrow [m~a] \to m~[a]
+\end{displaymath}
+The intended behaviour of the $\mathit{sequence}$ function is to take
+a list of monadic actions and to sequence them to produce a single
+monadic action that yields a list of values. The function
+$\mathit{sequence}$ is polymorphic in the monad $m$.
+
+The polymorphism involved in functions like $\mathit{sequence}$ is
+\emph{higher-kinded}. Unlike $\mathit{reverse}$, which was polymorphic
+over types, $\mathit{sequence}$ is polymorphic over type operators. A
+type operator is a type-level function from types to types. To keep
+things straight, a kinding system is used to separate types from type
+operators. Types have kind $*$, while type operators have kind
+$* \to *$. Higher kinds, like $(* \to *) \to *$ and
+$(* \to *) \to (* \to *)$ are also possible.
+
+Continuing the discussion of free theorems and testing from above, the
+two immediate questions are: what are the free theorems for functions
+like $\mathit{sequence}$? and how can we effectively test functions
+like $\mathit{sequence}$?
+
+The first question has been addressed before. Voightl{\"a}nder
+\cite{DBLP:journals/jfp/VytiniotisW10} examined an extension of free
+theorems for a limited system with higher kinds, applying it to monads
+in particular. Vytiniotis and Weirich
+\cite{DBLP:journals/jfp/VytiniotisW10}, and the first author
+\cite{atkey12relational} gave parametricity theorems for all higher
+kinded types in syntactic and denotational settings
+respectively. However, the higher kinded testing problem has not been
+explored before, and that is the purpose of this paper.
+
+\subsection{Overview}
+
+% \bigskip
+
+% Other related work:
+% \begin{itemize}
+% \item Harrison's ``Without Loss of Generality''
+% \end{itemize}
 
 \section{The Polymorphic Testing Problem}
 
-TODO (basically transplant Section 2 from \texttt{paper.tex})
-\begin{enumerate}
-\item Text: We recapitulate the work by Bernardy et al. to put our
-  work in context...
-\item State the polymorphic testing problem
-\item Give the basic BJC solution, reduction by embedding-projection
-  pairs, and the use of containers. (could maybe skip the embedding
-  projection pairs part, since we can now use datakinds in Haskell to
-  do containers for many types...)
-\item Polymorphic Testing with Constraints
-\end{enumerate}
+The {\em polymorphic testing problem} considered by Bernardy, Jansson,
+and Claessen can be formally stated as follows:
 
-\section{The \emph{Higher-Kinded} Polymorphic Testing Problem}
-
-INTRO: why do we want to test higher-kinded polymorphic functions?
-Well, because they are there, and because monads and applicative
-functors are very useful.
-
-Writing $F \rightarrow G$ for $\forall \alpha : *.\ F \alpha
-\rightarrow G \alpha$ for (first-order) functors $F$ and $G$, we can
-state the {\em higher-order polymorphic testing problem} as:
-
-\begin{verse}\label{problem:hpoly-testing}
-  \hspace*{0.2in}Let $\sigma[L] : (* \rightarrow *) \rightarrow (*
-  \rightarrow *)$ be a map between type constructors with a free type
-  constructor variable $L$, and let $H : (* \rightarrow *) \rightarrow
-  (* \rightarrow *)$ be a definable higher-order functor. Given a pair
-  of functions $h_1$, $h_2 : \forall L: * \rightarrow *.\ \sigma[L]
-  \rightarrow HL$, find a \emph{monomorphic} sufficient condition that
-  implies the following property:
+\begin{verse}\label{problem:poly-testing}
+  \hspace*{0.2in}Let $\sigma[a]$ be a type expression with a free
+  type variable $a$, and let $H$ be a definable functor. Given a
+  pair of functions $h_1$, $h_2$ of type $\forall a :
+  *.~\sigma[a] \to H a$, find a \emph{monomorphic} sufficient
+  condition that implies the following property:
   \begin{equation}
-    \label{eq:hproblem}
-    \forall L : * \rightarrow *. \forall x : \sigma[L].~h_1~L~x = h_2~L~x
+    \label{eq:problem}
+    \forall a : *. \forall x : \sigma[a].~h_1~[a]~x \equiv h_2~[a]~x
   \end{equation}
 \end{verse}
 
-FIXME: also formulate the higher-order poly testing problem with
-constraints...
+\begin{example}
+  We illustrate the polymorphic testing problem with an example:
+
+\end{example}
+
+The polymorphic testing problem was introduced by Bernardy, Jansson,
+and Claessen~\cite{bjc10}, whose main result is:
+
+\begin{theorem}\label{thm:poly-testing}
+Let $\sigma[\alpha]$, $H$, $h_1$ and $h_2$ be as in the description of
+the polymorphic testing problem. If there exist functors $\{G_i\}_{i
+  \in I}$ and $F$, and types $\{O_i\}_{i \in I}$ such that
+\begin{displaymath}
+  \sigma[\alpha] = \left( \Pi_{i \in I} (G_i \alpha \to O_i)\right) 
+  \times  (F \alpha \to \alpha)
+\end{displaymath}
+and if there exists an initial $F$-algebra $(\mu F, \mathrm{in} : F(\mu
+F) \to \mu F)$, then the following condition is a solution for this
+instance of the polymorphic testing problem:
+\begin{equation}
+  \label{eq:solution-pt}
+  \forall p : \Pi_{i \in I}(G_i(\mu F) \to O_i).~h_1~(\mu F)~(p,
+  \mathrm{in}) = h_2~(\mu F)~(p, \mathrm{in})
+\end{equation}
+\end{theorem}
+
+We will say that a type of the form of $\sigma$ is in {\em BJC
+  canonical form}.  The proof that (\ref{eq:solution-pt}) is a
+solution to the polymorphic testing problem relies on the following
+lemma. It is a consequence of the parametricity property for
+polymorphic functions whose domains are in BJC canonical form.
+\begin{lemma}\label{lem:initial-algebra-ok}
+  Let $h : \forall \alpha : *. \left(\Pi_{i \in I} (G_i \alpha \to
+  O_i)\right) \times (F \alpha \to \alpha) \to H\alpha$. Assume that
+  there is an initial $F$-algebra $(\mu F, \mathrm{in} : F(\mu F) \to
+  \mu F)$. If $\fold{f}$ is the unique $F$-algebra homomorphism from
+  $(\mu F, \mathrm{in})$ to $(\alpha, f)$, then
+  \begin{displaymath}
+    \begin{array}{l}
+      \forall \alpha : *. \forall p : \Pi_{i \in I} (G_i \alpha \to O_i). \forall f : F\alpha \to \alpha.\\
+      \quad\quad\quad h~\alpha~(p, f) = H~\fold{f}~(h~\mu F~(\langle p_i \circ G_i\fold{f} \rangle_{i \in I}, \mathrm{in}))
+    \end{array}
+  \end{displaymath}
+\end{lemma}
+
+\begin{proof}
+  We invoke the parametricity property for $h$ (specialised to the case
+  of functional relations):
+  \begin{equation}
+    \label{eq:h-parametricity-prop}
+    \begin{array}{l}
+      \forall \alpha_1, \alpha_2 : *.~\forall r : \alpha_1 \to \alpha_2. \\
+      \quad \forall p' : \Pi_{i \in I}(G_i\alpha_1 \to O_i), p : \Pi_{i \in I}(G_i\alpha_2 \to O_i). (\forall i \in I.~p'_i = p_i \circ G_i r) \Rightarrow \\
+      \quad\quad\quad \forall f_1 : F\alpha_1 \to \alpha_1, f_2 : F\alpha_2 \to \alpha_2. r \circ f_1 = f_2 \circ F r \Rightarrow \\
+      \quad\quad\quad\quad\quad H~r~(h~\alpha_1~(p',f_1)) =
+      h~\alpha_2~(p,f_2) 
+    \end{array}
+  \end{equation}
+  Given $\alpha : *$, $p : \Pi_{i \in I} (G_i\alpha \to O_i)$ and $f :
+  F\alpha \to \alpha$, we instantiate (\ref{eq:h-parametricity-prop})
+  with $\alpha_1 = \mu F$, $\alpha_2 = \alpha$, $r = \fold{f}$, $p' =
+  \langle p_i \circ G_i \fold{f} \rangle_{i \in I}$, $p = p$, $f_1 =
+  \mathrm{in}$ and $f_2 = f$. The condition on $p'$ and $p$ in the
+  third line holds by definition, and the condition on $f_1$ and $f_2$
+  in the fourth and fifth lines holds by the fact that $\fold{f}$ is
+  an $F$-algebra homomorphism.
+\end{proof}
+
+We can use Lemma~\ref{lem:initial-algebra-ok} to prove that
+(\ref{eq:solution-pt}) is a solution to the polymorphic testing
+problem.
+
+\begin{proof}
+(Theorem~\ref{thm:poly-testing}) We want to prove that
+  (\ref{eq:solution-pt}) implies the following specialization of
+  (\ref{eq:problem}) to the current situation: 
+  \begin{displaymath}
+    \forall \alpha : *. \forall p : \Pi_{i \in I}(G_i\alpha \to
+    O_i). \forall f : F\alpha \to \alpha.~h_1~\alpha~(p,f) =
+    h_2~\alpha~(p,f)
+  \end{displaymath}
+  Given $\alpha : *$, $p : \Pi_{i \in I}(G_i\alpha \to O_i)$ and $f :
+  F\alpha \to \alpha$, we reason as follows:
+  \begin{displaymath}
+    \begin{array}{cl}
+       & h_1~\alpha~(p,f) \\
+       =&\eqAnnotation{Lemma \ref{lem:initial-algebra-ok} applied to $h_1$} \\
+       &H~\fold{f}~(h_1~\mu F~(\langle p_i \circ G_i\fold{f}
+       \rangle_{i \in I}, \mathrm{in})) \\ 
+       =&\eqAnnotation{Application of (\ref{eq:solution-pt})} \\
+       &H~\fold{f}~(h_2~\mu F~(\langle p_i \circ G_i\fold{f}
+       \rangle_{i \in I}, \mathrm{in})) \\ 
+       =&\eqAnnotation{Lemma \ref{lem:initial-algebra-ok} applied to
+         $h_2$} \\ 
+       &h_2~\alpha~(p,f)
+    \end{array}
+  \end{displaymath}
+\end{proof}
+
+
+
+% TODO (basically transplant Section 2 from \texttt{paper.tex})
+% \begin{enumerate}
+% \item Text: We recapitulate the work by Bernardy et al. to put our
+%   work in context...
+% \item State the polymorphic testing problem
+% \item Give the basic BJC solution, reduction by embedding-projection
+%   pairs, and the use of containers. (could maybe skip the embedding
+%   projection pairs part, since we can now use datakinds in Haskell to
+%   do containers for many types...)
+% \item Polymorphic Testing with Constraints
+% \end{enumerate}
+
+\section{The \emph{Higher-Kinded} Polymorphic Testing Problem}
+
+% INTRO: why do we want to test higher-kinded polymorphic functions?
+% Well, because they are there, and because monads and applicative
+% functors are very useful.
+
+% Writing $F \rightarrow G$ for $\forall \alpha : *.\ F \alpha
+% \rightarrow G \alpha$ for (first-order) functors $F$ and $G$, we can
+% state the {\em higher-order polymorphic testing problem} as:
+
+% \begin{verse}\label{problem:hpoly-testing}
+%   \hspace*{0.2in}Let $\sigma[L] : (* \rightarrow *) \rightarrow (*
+%   \rightarrow *)$ be a map between type constructors with a free type
+%   constructor variable $L$, and let $H : (* \rightarrow *) \rightarrow
+%   (* \rightarrow *)$ be a definable higher-order functor. Given a pair
+%   of functions $h_1$, $h_2 : \forall L: * \rightarrow *.\ \sigma[L]
+%   \rightarrow HL$, find a \emph{monomorphic} sufficient condition that
+%   implies the following property:
+%   \begin{equation}
+%     \label{eq:hproblem}
+%     \forall L : * \rightarrow *. \forall x : \sigma[L].~h_1~L~x = h_2~L~x
+%   \end{equation}
+% \end{verse}
+
+% FIXME: also formulate the higher-order poly testing problem with
+% constraints...
 
 % \subsection{Arbitrary Type Constructors}
 
 % Give the useless instantiation...
 
-\subsection{Quantification over Monads}
+% \subsection{Quantification over Monads}
+
+FIXME: Introductory paragraph, explaining the purpose and structure of
+this section.
 
 % \begin{enumerate}
 % \item Solution of the higher-kinded polymorphic testing problem for
@@ -102,24 +397,30 @@ constraints...
 
 % \end{enumerate}
 
-Let us say we want to test the standard Haskell $\mathit{sequence}$
-function, which has the following type:
+Let us say we want to test a property of the standard Haskell
+$\mathit{sequence}$ function, which has the following type:
 % FIXME: check this type: the Haskell standard library has been
 % generified recently
 \begin{displaymath}
   \mathit{sequence} :: \forall m~a.~\mathit{Monad}~m \Rightarrow [m~a] \to m~[a]
 \end{displaymath}
-The $\mathit{sequence}$ function takes a list of monadic actions, in
-some arbitrary monad $m$, and sequences them to produce a single
-monadic action that yields a list of values. A useful property of
-$\mathit{sequence}$ is that it commutes with list append:
+The intended behaviour of the $\mathit{sequence}$ function is to take
+a list of monadic actions, in some arbitrary monad $m$, and to
+sequence them to produce a single monadic action that yields a list of
+values. An implied property of this informal specification is that
+$\mathit{sequence}$ commutes with list append:
 \begin{equation}\label{eq:sequence-append}
   \begin{array}{l}
     \forall m~a~\mathit{xs}~\mathit{ys}.~\mathit{Monad}~m \Rightarrow \\
-    \quad \mathbf{do}~\{~\mathit{xs'} \leftarrow \mathit{sequence}~\mathit{xs}; \mathit{ys'} \leftarrow \mathit{sequence}~\mathit{ys}; \mathit{return}~(\mathit{xs'}++\mathit{ys'}) \} \\
-    \quad \equiv \mathit{sequence} (\mathit{xs}++\mathit{ys})
+    \quad \mathbf{do}~\{~\mathit{xs'} \leftarrow \mathit{sequence}~\mathit{xs}; \mathit{ys'} \leftarrow \mathit{sequence}~\mathit{ys}; \mathit{return}~(\mathit{xs'}\listappend\mathit{ys'}) \} \\
+    \quad \equiv \mathit{sequence} (\mathit{xs}\listappend\mathit{ys})
   \end{array}
 \end{equation}
+Testing this property does not fall into the basic polymorphic testing
+problem considered by Bernardy et al., due the quantification over all
+\emph{monads}, which implies quantification over type constructors: in
+this case, quantification ove the type variable $m$ of kind $* \to *$.
+
 Abstracting out the two sides of equation (\ref{eq:sequence-append})
 as functions, we have a pair of functions of type:
 \begin{displaymath}
@@ -128,8 +429,8 @@ as functions, we have a pair of functions of type:
 where
 \begin{displaymath}
   \begin{array}{lcl}
-    h_1&=&\lambda \mathit{xs}~\mathit{ys} \to \mathbf{do}~\{~\mathit{xs'} \leftarrow \mathit{sequence}~\mathit{xs}; \mathit{ys'} \leftarrow \mathit{sequence}~\mathit{ys}; \mathit{return}~(\mathit{xs'}\mathit{+\kern-3pt+}\mathit{ys'}) \} \\
-    h_2&=&\lambda \mathit{xs}~\mathit{ys} \to \mathit{sequence}~(\mathit{xs}\mathit{+\kern-3pt+}\mathit{ys})
+    h_1&=&\lambda \mathit{xs}~\mathit{ys} \to \mathbf{do}~\{~\mathit{xs'} \leftarrow \mathit{sequence}~\mathit{xs}; \mathit{ys'} \leftarrow \mathit{sequence}~\mathit{ys}; \mathit{return}~(\mathit{xs'}\listappend\mathit{ys'}) \} \\
+    h_2&=&\lambda \mathit{xs}~\mathit{ys} \to \mathit{sequence}~(\mathit{xs}\listappend\mathit{ys})
   \end{array}
 \end{displaymath}
 Due to the quantification over all monads, testing equation
@@ -279,6 +580,8 @@ monads, and give the solution in terms of free monads.
 
 \subsection{Testing Non-deterministic Functions}
 
+MonadPlus
+
 \subsection{Testing Imperative Functions}
 
 Adaptation of the Claessen and Hughes Queue example...
@@ -313,7 +616,6 @@ Further work:
   we know their type.
 \end{itemize}
 
-% \bibliography{polytesting} \bibliographystyle{plain}
-
+\bibliography{polytesting} \bibliographystyle{plain}
 
 \end{document}
