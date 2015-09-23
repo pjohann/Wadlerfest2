@@ -27,20 +27,25 @@ Appalachian State University
 
 \section{Introduction}
 
-Of his many contributions, Prof.~Phil Wadler has contributed
-profoundly to Computer Science by taking deep ideas from the
-theoretical field of denotational semantics and exposing them as
-programming \emph{tools}. In \emph{Theorems for Free!}, he used
-Reynolds' relational parametricity to show that interesting theorems
-about polymorphic functions can be deduced from their types. He also
-used Moggi's use of monads to capture computational effects to provide
-a practical tool for incoporating effects into a purely functional
-language.
+Prof.~Phil Wadler has contributed profoundly to the science of
+computer programming by taking deep ideas from the theoretical field
+of denotational semantics and exposing them as programming
+\emph{tools}. In \emph{Theorems for Free!}
+\cite{DBLP:conf/fpca/Wadler89}, he used Reynolds' relational
+parametricity to show that interesting theorems about polymorphic
+functions can be deduced from their types. In \emph{The essence of
+  functional programming} \cite{DBLP:conf/popl/Wadler92},
+\emph{Comprehending monads} \cite{DBLP:journals/mscs/Wadler92}, and
+\emph{Imperative functional programming}
+\cite{DBLP:conf/popl/JonesW93} he showed how Moggi's use of monads to
+capture computational effects provides a practical tool for
+incorporating effects into a purely functional language.
 
 In this paper, we combine these lines of work with the work of
-Bernardy, Jansson and Claessen on testing polymorphic functions. Since
-monads are higher-kinded entities, this naturally leads us to the
-problem of testing functions that are polymorphic at higher-kind.
+Bernardy, Jansson and Claessen \cite{DBLP:conf/esop/BernardyJC10} on
+parametricity-based testing of polymorphic functions. Since monads are
+higher-kinded entities, this naturally leads us to the problem of
+testing functions that are polymorphic at higher-kinds.
 
 \subsection{Free Theorems}
 
@@ -56,12 +61,12 @@ In his famous paper \emph{Theorems for Free!}
 Phil then goes on to make good on his claim, exploiting Reynolds'
 theory of relational parametricity \cite{DBLP:conf/ifip/Reynolds83} to
 derive interesting properties of a range of polymorphic functions. His
-initial example is a function $r$ with the following polymorphic type:
+initial example is for a function $r$ with polymorphic type:
 \begin{displaymath}
   \mathit{r} :: \forall \alpha.~[\alpha] \to [\alpha]
 \end{displaymath}
 Just as Phil claims, it is possible, solely from the type of this
-function, to derive the following theorem: for all types $\alpha$ and
+function, to deduce the following theorem: for all types $\alpha$ and
 $\beta$, functions $f :: \alpha \to \beta$, and lists
 $\mathit{xs} :: [\alpha]$,
 \begin{displaymath}
@@ -76,12 +81,12 @@ function $r$ of type $\forall \alpha.~[\alpha] \to [\alpha]$.
 However, for programming, we are usually interested in specific
 functions of certain types. For example, the function $r$ may be named
 $\mathit{reverse}$, and we would expect it to actually reverse
-lists. The fact that $\mathit{reverse}$ commutes with $\mathit{map}$
-seems to be useful to know, but it does not seem to assure us that
-$\mathit{reverse}$ actually does what it name suggests. Infinitely
-many functions with the same type as $\mathit{reverse}$ satisfy the
-property of commuting with $\mathit{map}$. For example, the identity
-function, or the function that only reverses lists of even length.
+lists. The fact that $\mathit{reverse}$ commutes with $\mathit{map}~f$
+is useful to know, but it does not assure us that $\mathit{reverse}$
+actually does what it name suggests. Infinitely many functions with
+the same type as $\mathit{reverse}$ satisfy the property of commuting
+with $\mathit{map}~f$. For example, the identity function and the
+function that only reverses lists of even length both do.
 
 It would seem now that we need to actually look at the definition of
 $\mathit{reverse}$ to check that it actually does reverse lists,
@@ -89,15 +94,16 @@ reasoning by induction on the length of the input list, and so forth.
 
 \subsection{Testing Polymorphic Functions}
 
-There is another, more lightweight, approach however: we could
+However, there is another, more lightweight, approach: we could
 \emph{test} the function $\mathit{reverse}$ on different inputs to
 check that it actually reverses lists. Following the example of
 QuickCheck \cite{DBLP:conf/icfp/ClaessenH00}, we could test
-$\mathit{reverse}$ on random inputs, to make sure our tests are
-relatively unibased. In general, testing cannot achieve the same
-levels of guarantee that formal proof can, but it is often much
-cheaper to apply, and can help to discover defects before embarking on
-a formal proof (FIXME: Isabelle's Nitpick).
+$\mathit{reverse}$ on a number of inputs, choosing those inputs at
+random to make sure our tests are as unbiased as possible. In general,
+testing cannot achieve the same degree of guarantee that formal proof
+can, but it is often much cheaper to apply. Moreover, it can help to
+discover defects before embarking on a formal proof (FIXME: Isabelle's
+Nitpick).
 
 Using a QuickCheck style approach, we test our $\mathit{reverse}$
 function against a reference implementation on randomly generated
@@ -133,13 +139,15 @@ reasoning goes as follows.
 Assume for the moment that we are only interested in testing on lists
 $\mathit{xs}$ of length $n$, but still of some arbitrary type
 $\alpha$. We can form the type $\mathit{Fin}~n$ of natural numbers
-less than $n$, which represent positions in lists of length $n$. Let
-$\mathit{positions}_n = [0, 1, ..., n-1] :: [\mathit{Fin}~n]$ and let
-$f :: \mathit{Fin}~n \to \alpha$ be the list indexing function. Now,
-it is the case that $\mathit{xs} = \mathit{map}~f~\mathit{positions}_n$,
-and we can apply the type $\forall \alpha.~[\alpha] \to [\alpha]$'s
-free theorem to both sides of the property (\ref{eq:reverse-test})
-that we want to test:
+less than $n$, which represent positions in lists of length
+$n$. Letting
+$\mathit{positions}_n = [0, 1, ..., n-1] :: [\mathit{Fin}~n]$ and
+letting $f :: \mathit{Fin}~n \to \alpha$ be the list indexing
+function, we now have that
+$\mathit{xs} = \mathit{map}~f~\mathit{positions}_n$. Applying free
+theorem for the type $\forall \alpha.~[\alpha] \to [\alpha]$ to both
+sides of the property (\ref{eq:reverse-test}) that we want to test, we
+have:
 \begin{displaymath}
   \begin{array}{l}
     \mathit{reverse}~\mathit{xs} \equiv \mathit{reverse}~(\mathit{map}~f~\mathit{positions}_n) \equiv \mathit{map}~f~(\mathit{reverse}~\mathit{positions}_n) \\
@@ -157,25 +165,27 @@ To test the property for all $n$, we use a QuickCheck-style approach
 to randomly generate lengths $n$, execute both sides of the equation
 and check for equality. By the free theorem, and the reasoning above,
 if there is a counterexample to the correctness of reverse, then we
-can find it by finding the length $n$ on which $\mathit{reverse}$
-fails to act like $\mathit{revSpec}$.
+can find it by finding the list $\mathit{positions}_n$ on which
+$\mathit{reverse}$ fails to act like $\mathit{revSpec}$.
 
 \subsection{Testing Monadic Functions}
 
 Another of Phil's contributions to the science of computer programming
-is to introduce \emph{monads} as a practical programming tool, taking
-them from Moggi's original use as a structuring device for
-denotational semantics \cite{DBLP:conf/lics/Moggi89}.
+was the introduction of \emph{monads} as a practical programming tool
+for incorporating effects into a functional programming language,
+taking them from Moggi's original use as a structuring device for
+denotational semantics for those languages
+\cite{DBLP:conf/lics/Moggi89}.
 
 A key useful property of monads for programming is that there is more
-than one monad. So we use the $\mathit{State}$ monad if we want to
-write stateful programs, the $\mathit{List}$ monad if we want to write
-non-deterministic programs, the $\mathit{Writer}$ monad if we want to
-write programs that do logging, and so on.
+than one monad. Phil showed how we can use the $\mathit{State}$ monad
+if we want to write stateful programs, the $\mathit{List}$ monad if we
+want to write non-deterministic programs, the $\mathit{Writer}$ monad
+if we want to write programs that do logging, and so on.
 
 The fact that there exists more than one monad means that it natural
-to want to write programs that polymorphic over all monads. For
-example, the $\mathit{sequence}$ function from the Haskell standard
+to want to write programs that polymorphic over all monads. One
+example is the $\mathit{sequence}$ function from the Haskell standard
 library:
 \begin{displaymath}
   \mathit{sequence} :: \forall m~a.~\mathit{Monad}~m \Rightarrow [m~a] \to m~[a]
@@ -189,23 +199,23 @@ The polymorphism involved in functions like $\mathit{sequence}$ is
 \emph{higher-kinded}. Unlike $\mathit{reverse}$, which was polymorphic
 over types, $\mathit{sequence}$ is polymorphic over type operators. A
 type operator is a type-level function from types to types. To keep
-things straight, a kinding system is used to separate types from type
-operators. Types have kind $*$, while type operators have kind
-$* \to *$. Higher kinds, like $(* \to *) \to *$ and
+things straight, a kinding system is used in Haskell to separate types
+from type operators. Types have kind $*$, while type operators have
+kind $* \to *$. Higher kinds, like $(* \to *) \to *$ and
 $(* \to *) \to (* \to *)$ are also possible.
 
 Continuing the discussion of free theorems and testing from above, the
 two immediate questions are: what are the free theorems for functions
-like $\mathit{sequence}$? and how can we effectively test functions
-like $\mathit{sequence}$?
+like $\mathit{sequence}$? And how can we effectively test properties
+of functions like $\mathit{sequence}$?
 
 The first question has been addressed before. Voightl{\"a}nder
 \cite{DBLP:journals/jfp/VytiniotisW10} examined an extension of free
 theorems for a limited system with higher kinds, applying it to monads
 in particular. Vytiniotis and Weirich
-\cite{DBLP:journals/jfp/VytiniotisW10}, and the first author
-\cite{atkey12relational} gave parametricity theorems for all higher
-kinded types in syntactic and denotational settings
+\cite{DBLP:journals/jfp/VytiniotisW10}, as well as the first author
+\cite{atkey12relational}, gave parametricity theorems for all higher
+kinded types in syntactic and denotational settings,
 respectively. However, the higher kinded testing problem has not been
 explored before, and that is the purpose of this paper.
 
