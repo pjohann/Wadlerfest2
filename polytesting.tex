@@ -93,6 +93,7 @@ $\mathit{reverse}$ to check that it actually does reverse lists,
 reasoning by induction on the length of the input list, and so forth.
 
 \subsection{Testing Polymorphic Functions}
+\label{sec:intro-testing}
 
 However, there is another, more lightweight, approach: we could
 \emph{test} the function $\mathit{reverse}$ on different inputs to
@@ -189,7 +190,7 @@ to want to write programs that polymorphic over all monads. One
 example is the $\mathit{sequence}$ function from the Haskell standard
 library:
 \begin{displaymath}
-  \mathit{sequence} :: \forall m~a.~\mathit{Monad}~m \Rightarrow [m~a] \to m~[a]
+  \mathit{sequence} :: \forall m~\alpha.~\mathit{Monad}~m \Rightarrow [m~\alpha] \to m~[\alpha]
 \end{displaymath}
 The intended behaviour of the $\mathit{sequence}$ function is to take
 a list of monadic actions and to sequence them to produce a single
@@ -231,135 +232,162 @@ explored before, and that is the purpose of this paper.
 
 \section{The Polymorphic Testing Problem}
 
-The {\em polymorphic testing problem} considered by Bernardy, Jansson,
-and Claessen can be formally stated as follows:
+To put our contribution to testing higher-kinded programs in context,
+we first present in detail Bernardy et al.'s solution to the problem
+of testing properties of polymorphic functions that we sketched in
+Section \ref{sec:intro-testing}.
+
+\subsection{Without Constraints}
+\label{sec:without-constraints}
+
+The {\em polymorphic testing problem}, without constraints, considered
+by Bernardy, Jansson, and Claessen can be formally stated as follows:
 
 \begin{verse}\label{problem:poly-testing}
-  \hspace*{0.2in}Let $\sigma[a]$ be a type expression with a free
-  type variable $a$, and let $H$ be a definable functor. Given a
-  pair of functions $h_1$, $h_2$ of type $\forall a :
-  *.~\sigma[a] \to H a$, find a \emph{monomorphic} sufficient
-  condition that implies the following property:
+  \hspace*{0.2in}Let $\sigma[\alpha]$ be a type expression with a free
+  type variable $\alpha$, and let $\tau[\alpha]$ be a type expression
+  with a free type variable $\alpha$ that only appears
+  positively. Given a pair of functions $h_1$, $h_2$ of type
+  $\forall a : *.~\sigma[\alpha] \to \tau[\alpha]$, find a
+  \emph{monomorphic} sufficient condition that implies the following
+  property:
   \begin{equation}
     \label{eq:problem}
-    \forall a : *. \forall x : \sigma[a].~h_1~[a]~x \equiv h_2~[a]~x
+    \forall a : *, x : \sigma[\alpha].~h_1~x \equiv h_2~x
   \end{equation}
 \end{verse}
-
+The importance of the polymorphic testing problem is that if we can
+find a monomorphic condition that implies equation (\ref{eq:problem}),
+then we have a chance of submitting it to randomised testing, and by
+the implication, be able to test the original polymorphic equation.
 \begin{example}
-  We illustrate the polymorphic testing problem with an example:
-
+  \begin{enumerate}
+  \item The $\mathit{reverse}$ example FIXME
+  \item Bernardy et al.'s $\mathit{filter}$ example FIXME
+  \end{enumerate}
 \end{example}
 
-The polymorphic testing problem was introduced by Bernardy, Jansson,
-and Claessen~\cite{bjc10}, whose main result is:
+Stated as above, the general polymorphic testing problem seems
+unsolvable. However, Bernardy et al. gave a solution that covers a
+wide range of cases:
 
 \begin{theorem}\label{thm:poly-testing}
-Let $\sigma[\alpha]$, $H$, $h_1$ and $h_2$ be as in the description of
-the polymorphic testing problem. If there exist functors $\{G_i\}_{i
-  \in I}$ and $F$, and types $\{O_i\}_{i \in I}$ such that
-\begin{displaymath}
-  \sigma[\alpha] = \left( \Pi_{i \in I} (G_i \alpha \to O_i)\right) 
-  \times  (F \alpha \to \alpha)
-\end{displaymath}
-and if there exists an initial $F$-algebra $(\mu F, \mathrm{in} : F(\mu
-F) \to \mu F)$, then the following condition is a solution for this
-instance of the polymorphic testing problem:
-\begin{equation}
-  \label{eq:solution-pt}
-  \forall p : \Pi_{i \in I}(G_i(\mu F) \to O_i).~h_1~(\mu F)~(p,
-  \mathrm{in}) = h_2~(\mu F)~(p, \mathrm{in})
-\end{equation}
+  Let $\sigma[\alpha]$, $H$, $h_1$ and $h_2$ be as in the description
+  of the polymorphic testing problem. If there exist functors
+  $\{G_i\}_{i \in I}$ and $F$, and types $\{O_i\}_{i \in I}$ such that
+  \begin{displaymath}
+    \sigma[\alpha] = \left( \Pi_{i \in I} (G_i \alpha \to O_i)\right) \times  (F \alpha \to \alpha)
+  \end{displaymath}
+  and if there exists an initial $F$-algebra
+  $(\mu F, \mathrm{in} : F(\mu F) \to \mu F)$, then the following
+  condition is a solution for this instance of the polymorphic testing
+  problem:
+  \begin{equation}
+    \label{eq:solution-pt}
+    \forall p : \Pi_{i \in I}(G_i(\mu F) \to O_i).~h_1~(\mu F)~(p,
+    \mathrm{in}) = h_2~(\mu F)~(p, \mathrm{in})
+  \end{equation}
 \end{theorem}
 
-We will say that a type of the form of $\sigma$ is in {\em BJC
-  canonical form}.  The proof that (\ref{eq:solution-pt}) is a
-solution to the polymorphic testing problem relies on the following
-lemma. It is a consequence of the parametricity property for
-polymorphic functions whose domains are in BJC canonical form.
-\begin{lemma}\label{lem:initial-algebra-ok}
-  Let $h : \forall \alpha : *. \left(\Pi_{i \in I} (G_i \alpha \to
-  O_i)\right) \times (F \alpha \to \alpha) \to H\alpha$. Assume that
-  there is an initial $F$-algebra $(\mu F, \mathrm{in} : F(\mu F) \to
-  \mu F)$. If $\fold{f}$ is the unique $F$-algebra homomorphism from
-  $(\mu F, \mathrm{in})$ to $(\alpha, f)$, then
-  \begin{displaymath}
-    \begin{array}{l}
-      \forall \alpha : *. \forall p : \Pi_{i \in I} (G_i \alpha \to O_i). \forall f : F\alpha \to \alpha.\\
-      \quad\quad\quad h~\alpha~(p, f) = H~\fold{f}~(h~\mu F~(\langle p_i \circ G_i\fold{f} \rangle_{i \in I}, \mathrm{in}))
-    \end{array}
-  \end{displaymath}
-\end{lemma}
+\paragraph{How to apply Theorem \ref{thm:poly-testing}} At first
+glance, Theorem \ref{thm:poly-testing} does not seem to be useful: how
+many functions have argument types of the form
+$\left(\Pi_{i \in I}(G_i \alpha \to O_i)\right) \times (F~n~\alpha \to
+\alpha)$?
 
-\begin{proof}
-  We invoke the parametricity property for $h$ (specialised to the case
-  of functional relations):
-  \begin{equation}
-    \label{eq:h-parametricity-prop}
-    \begin{array}{l}
-      \forall \alpha_1, \alpha_2 : *.~\forall r : \alpha_1 \to \alpha_2. \\
-      \quad \forall p' : \Pi_{i \in I}(G_i\alpha_1 \to O_i), p : \Pi_{i \in I}(G_i\alpha_2 \to O_i). (\forall i \in I.~p'_i = p_i \circ G_i r) \Rightarrow \\
-      \quad\quad\quad \forall f_1 : F\alpha_1 \to \alpha_1, f_2 : F\alpha_2 \to \alpha_2. r \circ f_1 = f_2 \circ F r \Rightarrow \\
-      \quad\quad\quad\quad\quad H~r~(h~\alpha_1~(p',f_1)) =
-      h~\alpha_2~(p,f_2) 
-    \end{array}
-  \end{equation}
-  Given $\alpha : *$, $p : \Pi_{i \in I} (G_i\alpha \to O_i)$ and $f :
-  F\alpha \to \alpha$, we instantiate (\ref{eq:h-parametricity-prop})
-  with $\alpha_1 = \mu F$, $\alpha_2 = \alpha$, $r = \fold{f}$, $p' =
-  \langle p_i \circ G_i \fold{f} \rangle_{i \in I}$, $p = p$, $f_1 =
-  \mathrm{in}$ and $f_2 = f$. The condition on $p'$ and $p$ in the
-  third line holds by definition, and the condition on $f_1$ and $f_2$
-  in the fourth and fifth lines holds by the fact that $\fold{f}$ is
-  an $F$-algebra homomorphism.
-\end{proof}
+To be able to successfully apply Theorem \ref{thm:poly-testing}, we
+first need to transform the type of the pair of functions that we are
+testing for equality.
 
-We can use Lemma~\ref{lem:initial-algebra-ok} to prove that
-(\ref{eq:solution-pt}) is a solution to the polymorphic testing
-problem.
+\begin{enumerate}
+\item Start with the type of filter
+\item Convert it to use containers
+\item Show how this then gives an instance of the schema in the theorem
+\item Construct the initial algebra as a fixpoint
+\item Tie this back to the reverse example in the intro
+\end{enumerate}
 
-\begin{proof}
-(Theorem~\ref{thm:poly-testing}) We want to prove that
-  (\ref{eq:solution-pt}) implies the following specialization of
-  (\ref{eq:problem}) to the current situation: 
-  \begin{displaymath}
-    \forall \alpha : *. \forall p : \Pi_{i \in I}(G_i\alpha \to
-    O_i). \forall f : F\alpha \to \alpha.~h_1~\alpha~(p,f) =
-    h_2~\alpha~(p,f)
-  \end{displaymath}
-  Given $\alpha : *$, $p : \Pi_{i \in I}(G_i\alpha \to O_i)$ and $f :
-  F\alpha \to \alpha$, we reason as follows:
-  \begin{displaymath}
-    \begin{array}{cl}
-       & h_1~\alpha~(p,f) \\
-       =&\eqAnnotation{Lemma \ref{lem:initial-algebra-ok} applied to $h_1$} \\
-       &H~\fold{f}~(h_1~\mu F~(\langle p_i \circ G_i\fold{f}
-       \rangle_{i \in I}, \mathrm{in})) \\ 
-       =&\eqAnnotation{Application of (\ref{eq:solution-pt})} \\
-       &H~\fold{f}~(h_2~\mu F~(\langle p_i \circ G_i\fold{f}
-       \rangle_{i \in I}, \mathrm{in})) \\ 
-       =&\eqAnnotation{Lemma \ref{lem:initial-algebra-ok} applied to
-         $h_2$} \\ 
-       &h_2~\alpha~(p,f)
-    \end{array}
-  \end{displaymath}
-\end{proof}
+% We will say that a type of the form of $\sigma$ is in {\em BJC
+%   canonical form}.  The proof that (\ref{eq:solution-pt}) is a
+% solution to the polymorphic testing problem relies on the following
+% lemma. It is a consequence of the parametricity property for
+% polymorphic functions whose domains are in BJC canonical form.
+% \begin{lemma}\label{lem:initial-algebra-ok}
+%   Let $h : \forall \alpha : *. \left(\Pi_{i \in I} (G_i \alpha \to
+%   O_i)\right) \times (F \alpha \to \alpha) \to H\alpha$. Assume that
+%   there is an initial $F$-algebra $(\mu F, \mathrm{in} : F(\mu F) \to
+%   \mu F)$. If $\fold{f}$ is the unique $F$-algebra homomorphism from
+%   $(\mu F, \mathrm{in})$ to $(\alpha, f)$, then
+%   \begin{displaymath}
+%     \begin{array}{l}
+%       \forall \alpha : *. \forall p : \Pi_{i \in I} (G_i \alpha \to O_i). \forall f : F\alpha \to \alpha.\\
+%       \quad\quad\quad h~\alpha~(p, f) = H~\fold{f}~(h~\mu F~(\langle p_i \circ G_i\fold{f} \rangle_{i \in I}, \mathrm{in}))
+%     \end{array}
+%   \end{displaymath}
+% \end{lemma}
 
+% \begin{proof}
+%   We invoke the parametricity property for $h$ (specialised to the case
+%   of functional relations):
+%   \begin{equation}
+%     \label{eq:h-parametricity-prop}
+%     \begin{array}{l}
+%       \forall \alpha_1, \alpha_2 : *.~\forall r : \alpha_1 \to \alpha_2. \\
+%       \quad \forall p' : \Pi_{i \in I}(G_i\alpha_1 \to O_i), p : \Pi_{i \in I}(G_i\alpha_2 \to O_i). (\forall i \in I.~p'_i = p_i \circ G_i r) \Rightarrow \\
+%       \quad\quad\quad \forall f_1 : F\alpha_1 \to \alpha_1, f_2 : F\alpha_2 \to \alpha_2. r \circ f_1 = f_2 \circ F r \Rightarrow \\
+%       \quad\quad\quad\quad\quad H~r~(h~\alpha_1~(p',f_1)) =
+%       h~\alpha_2~(p,f_2) 
+%     \end{array}
+%   \end{equation}
+%   Given $\alpha : *$, $p : \Pi_{i \in I} (G_i\alpha \to O_i)$ and $f :
+%   F\alpha \to \alpha$, we instantiate (\ref{eq:h-parametricity-prop})
+%   with $\alpha_1 = \mu F$, $\alpha_2 = \alpha$, $r = \fold{f}$, $p' =
+%   \langle p_i \circ G_i \fold{f} \rangle_{i \in I}$, $p = p$, $f_1 =
+%   \mathrm{in}$ and $f_2 = f$. The condition on $p'$ and $p$ in the
+%   third line holds by definition, and the condition on $f_1$ and $f_2$
+%   in the fourth and fifth lines holds by the fact that $\fold{f}$ is
+%   an $F$-algebra homomorphism.
+% \end{proof}
 
+% We can use Lemma~\ref{lem:initial-algebra-ok} to prove that
+% (\ref{eq:solution-pt}) is a solution to the polymorphic testing
+% problem.
 
-% TODO (basically transplant Section 2 from \texttt{paper.tex})
-% \begin{enumerate}
-% \item Text: We recapitulate the work by Bernardy et al. to put our
-%   work in context...
-% \item State the polymorphic testing problem
-% \item Give the basic BJC solution, reduction by embedding-projection
-%   pairs, and the use of containers. (could maybe skip the embedding
-%   projection pairs part, since we can now use datakinds in Haskell to
-%   do containers for many types...)
-% \item Polymorphic Testing with Constraints
-% \end{enumerate}
+% \begin{proof}
+% (Theorem~\ref{thm:poly-testing}) We want to prove that
+%   (\ref{eq:solution-pt}) implies the following specialization of
+%   (\ref{eq:problem}) to the current situation: 
+%   \begin{displaymath}
+%     \forall \alpha : *. \forall p : \Pi_{i \in I}(G_i\alpha \to
+%     O_i). \forall f : F\alpha \to \alpha.~h_1~\alpha~(p,f) =
+%     h_2~\alpha~(p,f)
+%   \end{displaymath}
+%   Given $\alpha : *$, $p : \Pi_{i \in I}(G_i\alpha \to O_i)$ and $f :
+%   F\alpha \to \alpha$, we reason as follows:
+%   \begin{displaymath}
+%     \begin{array}{cl}
+%        & h_1~\alpha~(p,f) \\
+%        =&\eqAnnotation{Lemma \ref{lem:initial-algebra-ok} applied to $h_1$} \\
+%        &H~\fold{f}~(h_1~\mu F~(\langle p_i \circ G_i\fold{f}
+%        \rangle_{i \in I}, \mathrm{in})) \\ 
+%        =&\eqAnnotation{Application of (\ref{eq:solution-pt})} \\
+%        &H~\fold{f}~(h_2~\mu F~(\langle p_i \circ G_i\fold{f}
+%        \rangle_{i \in I}, \mathrm{in})) \\ 
+%        =&\eqAnnotation{Lemma \ref{lem:initial-algebra-ok} applied to
+%          $h_2$} \\ 
+%        &h_2~\alpha~(p,f)
+%     \end{array}
+%   \end{displaymath}
+% \end{proof}
 
-\section{The \emph{Higher-Kinded} Polymorphic Testing Problem}
+\subsection{With Constraints}
+
+The polymorphic testing problem described in Section
+\ref{sec:without-constraints} does not admit the possibility of
+additional constraints that the functions $h_1$ and $h_2$ might
+require of their inputs. For example, FIXME
+
+\section{The Higher-Kinded Polymorphic Testing Problem}
 
 % INTRO: why do we want to test higher-kinded polymorphic functions?
 % Well, because they are there, and because monads and applicative
@@ -392,9 +420,6 @@ problem.
 
 % \subsection{Quantification over Monads}
 
-FIXME: Introductory paragraph, explaining the purpose and structure of
-this section.
-
 % \begin{enumerate}
 % \item Solution of the higher-kinded polymorphic testing problem for
 %   monads, where the type is of the form:
@@ -408,55 +433,66 @@ this section.
 
 % \end{enumerate}
 
-Let us say we want to test a property of the standard Haskell
-$\mathit{sequence}$ function, which has the following type:
+FIXME: Bernardy et al.'s technique allows us to effectively test
+properties that are polymorphic over types, but not type operators.
+
+\subsection{Testing $\mathit{sequence}$}
+
+Recall the $\mathit{sequence}$ function we discusssed in the
+introduction, which is polymorphic over all monads:
 % FIXME: check this type: the Haskell standard library has been
 % generified recently
 \begin{displaymath}
   \mathit{sequence} :: \forall m~a.~\mathit{Monad}~m \Rightarrow [m~a] \to m~[a]
 \end{displaymath}
-The intended behaviour of the $\mathit{sequence}$ function is to take
-a list of monadic actions, in some arbitrary monad $m$, and to
-sequence them to produce a single monadic action that yields a list of
-values. An implied property of this informal specification is that
-$\mathit{sequence}$ commutes with list append:
+As we stated in the introduction, the intended behaviour of the
+$\mathit{sequence}$ function is to take a list of monadic actions, in
+some arbitrary monad $m$, and to sequence them to produce a single
+monadic action that yields a list of values. An implied property of
+this informal specification is that $\mathit{sequence}$ commutes with
+list append:
 \begin{equation}\label{eq:sequence-append}
   \begin{array}{l}
-    \forall m~a~\mathit{xs}~\mathit{ys}.~\mathit{Monad}~m \Rightarrow \\
-    \quad \mathbf{do}~\{~\mathit{xs'} \leftarrow \mathit{sequence}~\mathit{xs}; \mathit{ys'} \leftarrow \mathit{sequence}~\mathit{ys}; \mathit{return}~(\mathit{xs'}\listappend\mathit{ys'}) \} \\
-    \quad \equiv \mathit{sequence} (\mathit{xs}\listappend\mathit{ys})
+    \forall m~\alpha~\mathit{xs}~\mathit{ys}.~\mathit{Monad}~m \Rightarrow \\
+    \quad
+    \begin{array}{cl}
+      &\mathbf{do}~\{\mathit{xs'} \leftarrow \mathit{sequence}~\mathit{xs}; \mathit{ys'} \leftarrow \mathit{sequence}~\mathit{ys}; \mathit{return}~(\mathit{xs'}\listappend\mathit{ys'}) \} \\
+      \equiv&\mathit{sequence}~(\mathit{xs}\listappend\mathit{ys})
+    \end{array}
   \end{array}
 \end{equation}
 Testing this property does not fall into the basic polymorphic testing
 problem considered by Bernardy et al., due the quantification over all
 \emph{monads}, which implies quantification over type constructors: in
-this case, quantification ove the type variable $m$ of kind $* \to *$.
+this case, quantification over the type variable $m$ of kind
+$* \to *$. However, 
 
-Abstracting out the two sides of equation (\ref{eq:sequence-append})
-as functions, we have a pair of functions of type:
+\paragraph{Reformulating the types} Abstracting out the two sides of
+equation (\ref{eq:sequence-append}) as functions, we have a pair of
+functions of type:
 \begin{displaymath}
-  h_1, h_2 :: \forall m~a. \mathit{Monad}~m \Rightarrow [m~a] \to [m~a] \to m~[a]
+  h_1, h_2 :: \forall m~a.~\mathit{Monad}~m \Rightarrow [m~a] \to [m~a] \to m~[a]
 \end{displaymath}
 where
 \begin{displaymath}
   \begin{array}{lcl}
-    h_1&=&\lambda \mathit{xs}~\mathit{ys} \to \mathbf{do}~\{~\mathit{xs'} \leftarrow \mathit{sequence}~\mathit{xs}; \mathit{ys'} \leftarrow \mathit{sequence}~\mathit{ys}; \mathit{return}~(\mathit{xs'}\listappend\mathit{ys'}) \} \\
+    h_1&=&\lambda \mathit{xs}~\mathit{ys} \to \mathbf{do}~\{\mathit{xs'} \leftarrow \mathit{sequence}~\mathit{xs}; \mathit{ys'} \leftarrow \mathit{sequence}~\mathit{ys}; \mathit{return}~(\mathit{xs'}\listappend\mathit{ys'}) \} \\
     h_2&=&\lambda \mathit{xs}~\mathit{ys} \to \mathit{sequence}~(\mathit{xs}\listappend\mathit{ys})
   \end{array}
 \end{displaymath}
-Due to the quantification over all monads, testing equation
-(\ref{eq:sequence-append}), i.e., the equivalence of $h_1$ and $h_2$
-for a given implementation of $\mathit{sequence}$, is an instance of
-the \emph{higher-kinded polymorphic testing problem} described
-above. %FIXME: not really, due to the additional constraints
-The problem is to find an instantiation for the type constructor
-parameter $m$ that characterises the behaviour of the program on all
-possible instantiations.
+% Due to the quantification over all monads, testing equation
+% (\ref{eq:sequence-append}), i.e., the equivalence of $h_1$ and $h_2$
+% for a given implementation of $\mathit{sequence}$, is an instance of
+% the \emph{higher-kinded polymorphic testing problem} described
+% above. %FIXME: not really, due to the additional constraints
+% The problem is to find an instantiation for the type constructor
+% parameter $m$ that characterises the behaviour of the program on all
+% possible instantiations.
 
-FIXME: we step through a similar sequences of steps to try and solve
-the problem in this instance as worked for the base-kinded polymorphic
-testing problem. We transform the type in several steps so that we can
-find an instantiation of 
+% FIXME: we step through a similar sequences of steps to try and solve
+% the problem in this instance as worked for the base-kinded polymorphic
+% testing problem. We transform the type in several steps so that we can
+% find an instantiation of 
 
 Spelling out the types involved in the $\mathit{Monad}$ typeclass
 constraint, the type of $h_1$ and $h_2$ can be written as:
@@ -484,9 +520,10 @@ function, each of which has a type that has the form of a constructor
 for values of type $m~a$, for some $a$. We might then believe that it
 would be possible to follow the same approach as for the base-kinded
 approach above and instantiate $m$ with the least fixpoint of the
-functor describing these constructors. A suitable functor is the
-following, described as a Haskell GADT\footnote{Is this a functor;
-  need left-kan extensions?}:
+functor describing these constructors.
+
+\paragraph{Building fixpoints at kind $* \to *$} A suitable functor is
+the following, described as a Haskell GADT:
 \begin{displaymath}
   \begin{array}{l}
     \mathbf{data}~F~n_1~n_2~f~a~\mathbf{where} \\
@@ -516,20 +553,24 @@ $\mathit{HFix}~(F~n_1~n_2)$ is defined as follows:
     \mathbf{instance}~\mathit{Monad}~(\mathit{HFix}~(F~n_1~n_2))~\mathbf{where} \\
     \quad
     \begin{array}{lcl}
-      \mathit{return}  &=& \mathsf{HIn} \circ \mathsf{Return} \\
-      c \mbind f &=& FIXME
+      \mathit{return}~a &=& \mathsf{HIn}~(\mathsf{Return}~a) \\
+      c \mbind f &=& \mathsf{HIn}~(\mathsf{Bind}~c~f)
     \end{array}
   \end{array}
 \end{displaymath}
 We can now start to see the first problem with our current path: this
-instantiation of the operations of the $\mathit{Monad}$ typeclass do
+instantiation of the operations of the $\mathit{Monad}$ typeclass does
 not satisfy the monad laws! This is not necessarily a problem for some
 testing problems (FIXME: refer back to discussion above on
 constraints). However, for our problem, it is a problem, because it is
 difficult to see how we will get an equality between $h_1$ and $h_2$
 without at least assuming associaitivity of $(\mbind)$.
 
-Another problem is that 
+Another problem is that equality of values of
+$\mathit{HFix}~(F~n_1~n_2)~\alpha$ is undecidable for any $\alpha$,
+due to the $\mathsf{Bind}$ constructor: it has an unconstrained
+existentially quantified type, and its second argument is a function.
+So... FIXME
 
 
 
@@ -545,8 +586,8 @@ Another problem is that
 %   1. The more serious one: equality on values of type 'HFix (F n) a' isn't decidable due to the function argument to Bind.
 %   2. The property isn't true when the monad laws don't hold, because it relies on associativity of (>>=).
 
-We can fix both of these by using free monad instead of
-$\mathit{HFix}~(F~n_1~n_2)$. We define:
+\paragraph{Using a Free Monad} We can fix both of these problems by
+using free monad instead of $\mathit{HFix}~(F~n_1~n_2)$. We define:
 \begin{displaymath}
   \begin{array}{l}
     \mathsf{data}~M~n_1~n_2~a \\
@@ -572,9 +613,22 @@ $\mathit{Monad}$ instance:
     \end{array}
   \end{array}
 \end{displaymath}
-
-%   oper1 i = Oper1 i (Return ())
-%   oper2 i = Oper2 i (Return ())
+We also define auxillary functions $\mathit{oper_1}$ and
+$\mathit{oper_2}$ to turn the constructors $\mathsf{Oper1}$ and
+$\mathsf{Oper2}$ into parameterised monadic actions:
+\begin{displaymath}
+  \begin{array}{c@{\hspace{2em}}c}
+    \begin{array}{lcl}
+      \mathit{oper_1} &::& \mathit{Fin}~n_1 \to M~n_1~n_2~() \\
+      \mathit{oper_1}~i &=& \mathsf{Oper1}~i~(\mathsf{Return}~())
+    \end{array}
+    &
+    \begin{array}{lcl}
+      \mathit{oper_2} &::& \mathit{Fin}~n_2 \to M~n_1~n_2~() \\
+      \mathit{oper_2}~i &=& \mathsf{Oper2}~i~(\mathsf{Return}~())
+    \end{array}
+  \end{array}
+\end{displaymath}
 
 % Equality on values of type (M n a) is decidable.
 
@@ -585,6 +639,14 @@ $\mathit{Monad}$ instance:
 %    == h2 (map oper1 [0..n1-1]) (map oper2 [0..n2-1])
 
 % Which is (a) monomorphic; and (b) decidable. We can exhaustively test this property for values of n1 and n2 up to about 20.
+
+\begin{displaymath}
+  \forall n_1~n_2.
+  \begin{array}[t]{cl}
+    &h_1~(\mathit{map}~\mathit{oper_1}~[0..n_1-1])~(\mathit{map}~\mathit{oper_2}~[0..n_2-1]) \\
+    \equiv &h_2~(\mathit{map}~\mathit{oper_1}~[0..n_1-1])~(\mathit{map}~\mathit{oper_2}~[0..n_2-1])
+  \end{array}
+\end{displaymath}
 
 FIXME: formulate the higher-kinded polymorphic testing problem for
 monads, and give the solution in terms of free monads.
